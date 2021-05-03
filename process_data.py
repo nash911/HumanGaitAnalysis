@@ -9,6 +9,7 @@ import xlrd
 import numpy as np
 from collections import OrderedDict
 from scipy import stats
+import matplotlib.pyplot as plt
 
 
 def extract_data_from_cvs(cvs_file):
@@ -69,12 +70,44 @@ def segment_data(data_dict, seg_size):
     return robot_subjects_dict
 
 
-def extract_labels(data_dict, labels_file):
+def categorize_to_bins(data, n_bins='auto', plot=False, axs=None, x_label='Value'):
+    # Catagorise data and create bins
+    n, bins, patches = axs.hist(x=data, bins=n_bins, color='#0504aa', alpha=0.7, rwidth=0.85)
+
+    if plot:
+        axs.grid(axis='y', alpha=0.75)
+        axs.set(xlabel=x_label)
+        axs.set(ylabel='Frequency')
+
+        # Set a clean upper y-axis limit.
+        maxfreq = n.max()
+        axs.set_ylim(top=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+
+    return n, bins
+
+
+def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
     # Open xlsx file
     wb = xlrd.open_workbook(labels_file)
     labels_sheet = wb.sheet_by_index(0)
     num_rows = labels_sheet.nrows
     print("num_rows: ", num_rows)
+
+    # Extract subject height and weight information
+    heights = list()
+    weights = list()
+    for r in range(1, num_rows):
+        heights.append(float(labels_sheet.cell_value(r, 6)))
+        weights.append(float(labels_sheet.cell_value(r, 7)))
+
+    fig, axs = plt.subplots(2, sharey=False, sharex=False)
+    if plot:
+        fig.suptitle('Height/Weight Distribution Histograms', fontsize=20)
+
+    height_bins, height_bins_count = categorize_to_bins(heights, n_bins=n_bins, plot=plot, axs=axs[0],
+                                                        x_label='Height')
+    weight_bins, weight_bins_count = categorize_to_bins(weights, n_bins=n_bins, plot=plot, axs=axs[1],
+                                                        x_label='Weight')
 
     # Extract subject information (id, gender, height, weight, etc.) from labels file and
     # add it to the respective subject data dictionary
@@ -88,10 +121,15 @@ def extract_labels(data_dict, labels_file):
         data_dict[id]['height'] = float(row[6])
         data_dict[id]['weight'] = float(row[7])
 
+    if plot:
+        plt.show(block=False)
+        plt.pause(0.01)
+        input("Press Enter to continue...")
+
     return data_dict
 
 
-def process_robot_data(robot_files, robot_out_file, seg_sec=1.0):
+def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', plot=False):
     robot_files_dict = OrderedDict()
     seg_size = int(15.0 * seg_sec)
 
@@ -121,7 +159,8 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0):
     robot_subject_dict = segment_data(robot_data_dict, seg_size)
 
     # Extract subject information (id, gender, height, weight, etc.) from labels file
-    robot_subject_dict = extract_labels(robot_subject_dict, 'data/PARTICIPANTS_INFORMATION.xlsx')
+    robot_subject_dict = extract_labels(robot_subject_dict, 'data/PARTICIPANTS_INFORMATION.xlsx',
+                                        n_bins=n_bins, plot=plot)
 
     # Print subject information and data size
     for k, v in robot_subject_dict.items():
@@ -134,18 +173,37 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0):
         json.dump(robot_subject_dict, fp, indent=4)
 
 
-def main():
+def main(argv):
+    seg_sec = 1.0
+    n_bins = 'auto'
+    plot = False
+
     rawdata_path = 'data/raw_data'
     robot_out_file = 'data/robot_data_file.dat'
-    _, _, filenames = next(os.walk(rawdata_path))
+    try:
+        opts, args = getopt.getopt(argv, "h ps:b:", ["plot", "sec=", "bins="])
+    except getopt.GetoptError:
+        sys.exit(2)
 
+    for opt, arg in opts:
+        if opt == '-h':
+            sys.exit()
+        elif opt in ("-p", "--log_excitations"):
+            plot = True
+        elif opt in ("-s", "--sec"):
+            seg_sec = float(arg)
+        elif opt in ("-b", "--bins"):
+            n_bins = int(arg)
+
+    # Extract robot file names
+    _, _, filenames = next(os.walk(rawdata_path))
     robot_files = list()
     for f in filenames:
         if 'robot' in f:
             robot_files.append(join(rawdata_path, f))
 
-    process_robot_data(robot_files, robot_out_file, seg_sec=1.0)
+    process_robot_data(robot_files, robot_out_file, seg_sec=seg_sec, n_bins=n_bins, plot=plot)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
