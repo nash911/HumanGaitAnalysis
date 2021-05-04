@@ -83,7 +83,19 @@ def categorize_to_bins(data, n_bins='auto', plot=False, axs=None, x_label='Value
         maxfreq = n.max()
         axs.set_ylim(top=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
 
-    return n, bins
+    return bins, n
+
+
+def get_bin_index(bins, value):
+    num_bins = len(bins)
+    idx = num_bins-2 # By default assigned to the last bin
+
+    for i in range(num_bins-1):
+        if value >= bins[i] and value < bins[i+1]:
+            idx = i
+            break
+
+    return int(idx)
 
 
 def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
@@ -109,6 +121,17 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
     weight_bins, weight_bins_count = categorize_to_bins(weights, n_bins=n_bins, plot=plot, axs=axs[1],
                                                         x_label='Weight')
 
+    print("height_bins:\n", height_bins)
+    print("Height Min: %f  --  Max: %f" % (np.min(np.array(heights)), np.max(np.array(heights))))
+    print("height_bins Diff:\n", (np.array(height_bins)[1:] - np.array(height_bins)[:-1]))
+    print("\nweight_bins:\n", weight_bins)
+    print("Weight Min: %f  --  Max: %f" % (np.min(np.array(weights)), np.max(np.array(weights))))
+    print("weight_bins Diff:\n", (np.array(weight_bins)[1:] - np.array(weight_bins)[:-1]))
+    print("\n")
+    h_bins_count = np.zeros(n_bins)
+    w_bins_count = np.zeros(n_bins)
+
+
     # Extract subject information (id, gender, height, weight, etc.) from labels file and
     # add it to the respective subject data dictionary
     for r in range(1, num_rows):
@@ -118,8 +141,26 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
         data_dict[id]['age'] = int(row[3])
         data_dict[id]['gender'] = 'male' if row[5] == 'MASCULINO' else 'female'
         data_dict[id]['sex'] = 0 if row[5] == 'MASCULINO' else 1
+
         data_dict[id]['height'] = float(row[6])
+        h_idx = get_bin_index(height_bins, data_dict[id]['height'])
+        data_dict[id]['height_ctgry'] = h_idx
+        data_dict[id]['height_bin'] = tuple((height_bins[h_idx], height_bins[h_idx+1]))
+
         data_dict[id]['weight'] = float(row[7])
+        w_idx = get_bin_index(weight_bins, data_dict[id]['weight'])
+        data_dict[id]['weight_ctgry'] = w_idx
+        data_dict[id]['weight_bin'] = tuple((weight_bins[w_idx], weight_bins[w_idx+1]))
+
+        h_bins_count[data_dict[id]['height_ctgry']] += 1
+        w_bins_count[data_dict[id]['weight_ctgry']] += 1
+
+    print("height_bins_count:", height_bins_count)
+    print("h_bins_count:     ", h_bins_count)
+    print("weight_bins_count:", weight_bins_count)
+    print("w_bins_count:     ", w_bins_count)
+    print("\n")
+
 
     if plot:
         plt.show(block=False)
@@ -164,9 +205,10 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', 
 
     # Print subject information and data size
     for k, v in robot_subject_dict.items():
-        print("%d: X(%d, %d) - id: %d - age: %d - sex: %d - height: %f - weight: %f" %
-              (k+1, len(v['X']), len(v['X'][0]), v['id']+1, v['age'], v['sex'], v['height'],
-               v['weight']))
+        print("%d: X(%d, %d) - id: %d - age: %d - sex: %d - [%d] height: %.2f (%.1f:%.1f) - [%d] weight: %.2f (%.2f:%.2f)" %
+              (k+1, len(v['X']), len(v['X'][0]), v['id']+1, v['age'], v['sex'], v['height_ctgry'],
+               v['height'], v['height_bin'][0], v['height_bin'][1], v['weight_ctgry'], v['weight'],
+               v['weight_bin'][0], v['weight_bin'][1]))
 
     # Dump extracted data to file in JSON format
     with open(robot_out_file, 'w') as fp:
@@ -178,7 +220,7 @@ def main(argv):
     n_bins = 'auto'
     plot = False
 
-    rawdata_path = 'data/raw_data'
+    rawdata_path = 'data/gait_files'
     robot_out_file = 'data/robot_data_file.dat'
     try:
         opts, args = getopt.getopt(argv, "h ps:b:", ["plot", "sec=", "bins="])
