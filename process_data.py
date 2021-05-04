@@ -98,7 +98,21 @@ def get_bin_index(bins, value):
     return int(idx)
 
 
-def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
+def get_subject_gender(id):
+    labels_file = 'data/PARTICIPANTS_INFORMATION.xlsx'
+    wb = xlrd.open_workbook(labels_file)
+    labels_sheet = wb.sheet_by_index(0)
+    num_rows = labels_sheet.nrows
+
+    for r in range(1, num_rows):
+        row = labels_sheet.row_values(r)
+        if int(row[1]) - 1 == id:
+            return 'male' if row[5] == 'MASCULINO' else 'female'
+
+    return None
+
+
+def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto', plot=False):
     # Open xlsx file
     wb = xlrd.open_workbook(labels_file)
     labels_sheet = wb.sheet_by_index(0)
@@ -109,8 +123,11 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
     heights = list()
     weights = list()
     for r in range(1, num_rows):
-        heights.append(float(labels_sheet.cell_value(r, 6)))
-        weights.append(float(labels_sheet.cell_value(r, 7)))
+        gender = 'male' if labels_sheet.cell_value(r, 5) == 'MASCULINO' else 'female'
+        # Process data of the specified gender
+        if (male and female) or (male and gender=='male') or (female and gender=='female'):
+            heights.append(float(labels_sheet.cell_value(r, 6)))
+            weights.append(float(labels_sheet.cell_value(r, 7)))
 
     fig, axs = plt.subplots(2, sharey=False, sharex=False)
     if plot:
@@ -122,10 +139,10 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
                                                         x_label='Weight')
 
     print("height_bins:\n", height_bins)
-    print("Height Min: %f  --  Max: %f" % (np.min(np.array(heights)), np.max(np.array(heights))))
+    print("Height Min: %.1f  --  Max: %.1f" % (np.min(np.array(heights)), np.max(np.array(heights))))
     print("height_bins Diff:\n", (np.array(height_bins)[1:] - np.array(height_bins)[:-1]))
     print("\nweight_bins:\n", weight_bins)
-    print("Weight Min: %f  --  Max: %f" % (np.min(np.array(weights)), np.max(np.array(weights))))
+    print("Weight Min: %.2f  --  Max: %.2f" % (np.min(np.array(weights)), np.max(np.array(weights))))
     print("weight_bins Diff:\n", (np.array(weight_bins)[1:] - np.array(weight_bins)[:-1]))
     print("\n")
     h_bins_count = np.zeros(n_bins)
@@ -137,23 +154,26 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
     for r in range(1, num_rows):
         row = labels_sheet.row_values(r)
         id = int(row[1]) - 1
-        data_dict[id]['id'] = id
-        data_dict[id]['age'] = int(row[3])
-        data_dict[id]['gender'] = 'male' if row[5] == 'MASCULINO' else 'female'
-        data_dict[id]['sex'] = 0 if row[5] == 'MASCULINO' else 1
+        try:
+            data_dict[id]['id'] = id
+            data_dict[id]['age'] = int(row[3])
+            data_dict[id]['gender'] = 'male' if row[5] == 'MASCULINO' else 'female'
+            data_dict[id]['sex'] = 0 if row[5] == 'MASCULINO' else 1
 
-        data_dict[id]['height'] = float(row[6])
-        h_idx = get_bin_index(height_bins, data_dict[id]['height'])
-        data_dict[id]['height_ctgry'] = h_idx
-        data_dict[id]['height_bin'] = tuple((height_bins[h_idx], height_bins[h_idx+1]))
+            data_dict[id]['height'] = float(row[6])
+            h_idx = get_bin_index(height_bins, data_dict[id]['height'])
+            data_dict[id]['height_ctgry'] = h_idx
+            data_dict[id]['height_bin'] = tuple((height_bins[h_idx], height_bins[h_idx+1]))
 
-        data_dict[id]['weight'] = float(row[7])
-        w_idx = get_bin_index(weight_bins, data_dict[id]['weight'])
-        data_dict[id]['weight_ctgry'] = w_idx
-        data_dict[id]['weight_bin'] = tuple((weight_bins[w_idx], weight_bins[w_idx+1]))
+            data_dict[id]['weight'] = float(row[7])
+            w_idx = get_bin_index(weight_bins, data_dict[id]['weight'])
+            data_dict[id]['weight_ctgry'] = w_idx
+            data_dict[id]['weight_bin'] = tuple((weight_bins[w_idx], weight_bins[w_idx+1]))
 
-        h_bins_count[data_dict[id]['height_ctgry']] += 1
-        w_bins_count[data_dict[id]['weight_ctgry']] += 1
+            h_bins_count[data_dict[id]['height_ctgry']] += 1
+            w_bins_count[data_dict[id]['weight_ctgry']] += 1
+        except KeyError:
+            pass
 
     print("height_bins_count:", height_bins_count)
     print("h_bins_count:     ", h_bins_count)
@@ -170,11 +190,12 @@ def extract_labels(data_dict, labels_file, n_bins='auto', plot=False):
     return data_dict
 
 
-def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', plot=False):
+def process_robot_data(robot_files, robot_out_file, male=True, female=True, seg_sec=1.0,
+                       n_bins='auto', plot=False):
     robot_files_dict = OrderedDict()
     seg_size = int(15.0 * seg_sec)
 
-    # Extract Subject id and gait id
+    # Extract Subject id and gait id and collect gait files per subject
     for f in robot_files:
         subject_id = int(f.split('_')[2]) - 1
         gait_id = int(f.split('_')[3].split('.')[0]) - 1
@@ -188,10 +209,13 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', 
     robot_data_dict = OrderedDict()
     # Extract gait data from cvs files
     for r in range(len(robot_files_dict)):
-        robot_data_dict[r] = OrderedDict()
-        files_count = len(robot_files_dict[r])
-        for f in range(files_count):
-            robot_data_dict[r][f] = extract_data_from_cvs(robot_files_dict[r][f])
+        gender = get_subject_gender(r)
+        # Process data of the specified gender
+        if (male and female) or (male and gender=='male') or (female and gender=='female'):
+            robot_data_dict[r] = OrderedDict()
+            files_count = len(robot_files_dict[r])
+            for f in range(files_count):
+                robot_data_dict[r][f] = extract_data_from_cvs(robot_files_dict[r][f])
 
     # Clean gait data - Standardize frame rate
     clean_data(robot_data_dict)
@@ -201,7 +225,7 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', 
 
     # Extract subject information (id, gender, height, weight, etc.) from labels file
     robot_subject_dict = extract_labels(robot_subject_dict, 'data/PARTICIPANTS_INFORMATION.xlsx',
-                                        n_bins=n_bins, plot=plot)
+                                        male=male, female=female, n_bins=n_bins, plot=plot)
 
     # Print subject information and data size
     for k, v in robot_subject_dict.items():
@@ -216,6 +240,8 @@ def process_robot_data(robot_files, robot_out_file, seg_sec=1.0, n_bins='auto', 
 
 
 def main(argv):
+    male = True
+    female = True
     seg_sec = 1.0
     n_bins = 'auto'
     plot = False
@@ -223,19 +249,32 @@ def main(argv):
     rawdata_path = 'data/gait_files'
     robot_out_file = 'data/robot_data_file.dat'
     try:
-        opts, args = getopt.getopt(argv, "h ps:b:", ["plot", "sec=", "bins="])
+        opts, args = getopt.getopt(argv, "h fmps:b:", ["female", "male", "plot", "sec=", "bins="])
     except getopt.GetoptError:
         sys.exit(2)
 
     for opt, arg in opts:
         if opt == '-h':
             sys.exit()
+        elif opt in ("-f", "--female"):
+            female = False
+        elif opt in ("-m", "--male"):
+            male = False
         elif opt in ("-p", "--log_excitations"):
             plot = True
         elif opt in ("-s", "--sec"):
             seg_sec = float(arg)
         elif opt in ("-b", "--bins"):
             n_bins = int(arg)
+
+    if male and female:
+        print("Processing data of both genders")
+    elif male:
+        print("Processing data of Males only!")
+    elif female:
+        print("Processing data of Females only!")
+    else:
+        sys.exit("Error: Remove atleast one of [-f|--female] or [-m|--male] flags.")
 
     # Extract robot file names
     _, _, filenames = next(os.walk(rawdata_path))
@@ -244,7 +283,8 @@ def main(argv):
         if 'robot' in f:
             robot_files.append(join(rawdata_path, f))
 
-    process_robot_data(robot_files, robot_out_file, seg_sec=seg_sec, n_bins=n_bins, plot=plot)
+    process_robot_data(robot_files, robot_out_file, male=male, female=female, seg_sec=seg_sec,
+                       n_bins=n_bins, plot=plot)
 
 
 if __name__ == "__main__":
