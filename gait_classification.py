@@ -48,9 +48,13 @@ def gender_data_split(data_file, test_perc=0.3):
     test_female_ids = np.array(female_ids)[rnd_order_female][:female_test_size]
     test_ids = np.hstack((test_male_ids, test_female_ids)).tolist()
 
+    test_ids_dict = OrderedDict()
+    test_ids_dict['test_male_ids'] = np.sort(np.array(test_male_ids) + 1).tolist()
+    test_ids_dict['test_female_ids'] = np.sort(np.array(test_female_ids) + 1).tolist()
+
     print("\nTest Subject Ids:")
-    print("Male  : ", (np.array(test_male_ids) + 1).tolist())
-    print("Female: ", (np.array(test_female_ids) + 1).tolist())
+    print("Male  : ", test_ids_dict['test_male_ids'])
+    print("Female: ", test_ids_dict['test_female_ids'])
 
     train_X = list()
     train_y = list()
@@ -85,7 +89,7 @@ def gender_data_split(data_file, test_perc=0.3):
     test_X = test_X[test_order]
     test_y = test_y[test_order]
 
-    return train_X, test_X, train_y, test_y
+    return train_X, test_X, train_y, test_y, test_ids_dict
 
 
 def subjectId_data_split(data_file, test_perc=0.3):
@@ -125,7 +129,11 @@ def subjectId_data_split(data_file, test_perc=0.3):
     test_X = test_X[test_order]
     test_y = test_y[test_order]
 
-    return train_X, test_X, train_y, test_y
+    data_split_dict = OrderedDict()
+    data_split_dict['train_size'] = train_size
+    data_split_dict['test_size'] = test_size
+
+    return train_X, test_X, train_y, test_y, data_split_dict
 
 
 def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6):
@@ -148,12 +156,13 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6):
         test_ids.append(test_subjects_dict[k])
     test_ids = np.hstack(test_ids).tolist()
 
+    test_ids_dict = OrderedDict()
     print("Test Subject Ids per Category:")
     for i in range(len(test_subjects_dict)):
-
         bin = data_dict[str(test_subjects_dict[i][0])][target+'_bin']
+        test_ids_dict[str(bin)] = np.sort(test_subjects_dict[i]).tolist()
         print("Category-%d [%.2f : %.2f]: " % (i, bin[0], bin[1]))
-        print("                           ", test_subjects_dict[i])
+        print("                           ", test_ids_dict[str(bin)])
 
     train_X = list()
     train_y = list()
@@ -188,7 +197,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6):
     test_X = test_X[test_order]
     test_y = test_y[test_order]
 
-    return train_X, test_X, train_y, test_y
+    return train_X, test_X, train_y, test_y, test_ids_dict
 
 
 def linear_classifier(X, K):
@@ -235,13 +244,64 @@ def four_layer_nn(X, K, dropout=0.5):
     return NN(X, layers)
 
 
+def train_fold(data_file, classify, test_split, num_layers, dropout, reg_lambda, dims, epochs,
+               log_freq, plot_title):
+    if classify == 'gender':
+        if test_split >= 1.0:
+            sys.exit("Error: For Sender classification, test_split [-t|--test_split] must " +
+                      "be a float value < 1.0")
+        train_X, test_X, train_y, test_y, test_ids_dict = \
+            gender_data_split(data_file, test_perc=test_split)
+    elif 'id' in classify: # Subject Identification
+        if test_split >= 1.0:
+            sys.exit("Error: For Subject Identification, test_split [-t|--test_split] must " +
+                      "be a float value < 1.0")
+        train_X, test_X, train_y, test_y, test_ids_dict = \
+            subjectId_data_split(data_file, test_perc=test_split)
+    elif classify in ['height', 'weight']:
+        if test_split < 1.0:
+            sys.exit("Error: For Height/Weight classification, test_split [-t|--test_split] " +
+                      "must be an integer value >= 1")
+        train_X, test_X, train_y, test_y, test_ids_dict = \
+            height_weight_data_split(data_file, classify, test_smpl_per_ctgry=int(test_split))
+
+    train_size = train_X.shape[0]
+    test_size = test_X.shape[0]
+
+    X = np.vstack((train_X, test_X))
+    y = np.hstack((train_y, test_y))
+    K = np.max(y) + 1
+
+    # Build a NN
+    if num_layers == 1:
+        nn = linear_classifier(X, K)
+    elif num_layers == 2:
+        nn = two_layer_nn(X, K, dropout=dropout)
+    elif num_layers == 3:
+        nn = three_layer_nn(X, K, dropout=dropout)
+    elif num_layers == 3:
+        nn = four_layer_nn(X, K, dropout=dropout)
+
+    # Create an optimizer
+    adam = Adam(nn, step_size=1e-3, beta_1=0.9,  beta_2=0.999, reg_lambda=reg_lambda,
+                train_size=train_size, test_size=test_size)
+    # Train NN
+    train_logs_dict = adam.train(X, y, normalize='pca', dims=dims, shuffle=False, epochs=epochs,
+                                 log_freq=log_freq, plot=plot_title)
+    train_logs_dict['test_ids'] = test_ids_dict
+
+    return train_logs_dict
+
+
 def usage():
     print("Usage: gait_classification.py [-c | --classify] <gender/id/height/weight> \n"
           "                              [-d | --dropout] <dropout percent> \n"
           "                              [-D | --pca_dims] <no. of PCA dimensions to reduce data to> \n"
           "                              [-e | --epochs] <no. of training epochs> \n"
           "                              [-f | --log_freq] <log frequency epochs> \n"
+          "                              [-k | --num_folds] <no. of cross validation folds> \n"
           "                              [-l | --num_layers] <no. on nn layers> \n"
+          "                              [-o | --out_file] <training logs file path> \n"
           "                              [-p | --plot] \n"
           "                              [-r | --reg] <regularization lamda> \n"
           "                              [-s | --test_split] <test split of the data> \n"
@@ -257,14 +317,17 @@ def main(argv):
     epochs = 100
     reg_lambda = 0.1
     data_file = 'data/robot_data_file.dat'
+    out_file = 'output/train_log.dat'
     plot = False
     plot_title = None
     log_freq = 1
+    num_folds = 1
 
     try:
-        opts, args = getopt.getopt(argv, "h pc:D:s:l:d:r:e:f:",
+        opts, args = getopt.getopt(argv, "h pc:D:s:l:d:r:e:f:k:o:",
                                    ["plot", "classify=", "pca_dims=" "test_split=", "num_layers=",
-                                    "dropout=", "reg=", "epochs=", "log_freq"])
+                                    "dropout=", "reg=", "epochs=", "log_freq=", "num_folds=",
+                                    "out_file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -291,50 +354,38 @@ def main(argv):
             epochs = int(arg)
         elif opt in ("-f", "--log_freq"):
             log_freq = int(arg)
+        elif opt in ("-k", "--num_folds"):
+            num_folds = int(arg)
+        elif opt in ("-o", "--out_file"):
+            out_file = arg
 
     if dims > 1.0:
         dims = int(dims)
 
-    if classify == 'gender':
-        if test_split >= 1.0:
-            sys.exit("Error: For Sender classification, test_split [-t|--test_split] must " +
-                      "be a float value < 1.0")
-        train_X, test_X, train_y, test_y = gender_data_split(data_file, test_perc=test_split)
-    elif 'id' in classify: # Subject Identification
-        if test_split >= 1.0:
-            sys.exit("Error: For Subject Identification, test_split [-t|--test_split] must " +
-                      "be a float value < 1.0")
-        train_X, test_X, train_y, test_y = subjectId_data_split(data_file, test_perc=test_split)
-    elif classify in ['height', 'weight']:
-        if test_split < 1.0:
-            sys.exit("Error: For Height/Weight classification, test_split [-t|--test_split] " +
-                      "must be an integer value >= 1")
-        train_X, test_X, train_y, test_y = \
-            height_weight_data_split(data_file, classify, test_smpl_per_ctgry=int(test_samples))
+    # Create cross validation training logs dict, and store training hyper parameters
+    cross_valid_dict = OrderedDict()
+    training_params_dict = OrderedDict()
+    training_params_dict['data_source'] = 'robot'
+    training_params_dict['classify'] = 'Subject Identification' if 'id' in classify else \
+                                       classify + ' classification'
+    training_params_dict['model'] = 'Linear Classifier' if num_layers == 1 else \
+                                    str(num_layers) + '-Layer NN'
+    training_params_dict['dropout'] = dropout
+    training_params_dict['reg_lambda'] = reg_lambda
+    training_params_dict['pca_dims'] = dims
+    cross_valid_dict['training_hyper_params'] = training_params_dict
 
-    train_size = train_X.shape[0]
-    test_size = test_X.shape[0]
+    with open(out_file, 'w') as fp:
+        json.dump(cross_valid_dict, fp, indent=4)
 
-    X = np.vstack((train_X, test_X))
-    y = np.hstack((train_y, test_y))
-    K = np.max(y) + 1
+    # Train k-fold cross validation models and collect training logs
+    for i in range(num_folds):
+        cross_valid_dict[i] = train_fold(data_file, classify, test_split, num_layers, dropout,
+                                         reg_lambda, dims, epochs, log_freq, plot_title)
 
-    # Build a NN
-    if num_layers == 1:
-        nn = linear_classifier(X, K)
-    elif num_layers == 2:
-        nn = two_layer_nn(X, K, dropout=dropout)
-    elif num_layers == 3:
-        nn = three_layer_nn(X, K, dropout=dropout)
-    elif num_layers == 3:
-        nn = four_layer_nn(X, K, dropout=dropout)
-
-    # Create an optimizer
-    adam = Adam(nn, step_size=1e-3, beta_1=0.9,  beta_2=0.999, reg_lambda=reg_lambda,
-                train_size=train_size, test_size=test_size)
-    # Train NN
-    adam.train(X, y, normalize='pca', dims=dims, shuffle=False, epochs=epochs, log_freq=log_freq,
-               plot=plot_title)
+        # Dump extracted data to file in JSON format
+        with open(out_file, 'w') as fp:
+            json.dump(cross_valid_dict, fp, indent=4)
 
     input("Press Enter to continue...")
 
