@@ -200,37 +200,40 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6):
     return train_X, test_X, train_y, test_y, test_ids_dict
 
 
-def linear_classifier(X, K):
+def linear_classifier(X, num_output_neurons, out_actvn_fn):
     # Linear Classifier
-    l1 = FC(X, num_neurons=K, bias=True, xavier=True, activation_fn='SoftMax', name="Output-Layer")
+    l1 = FC(X, num_neurons=num_output_neurons, bias=True, xavier=True, activation_fn=out_actvn_fn,
+            name="Output-Layer")
     layers = [l1]
 
     return NN(X, layers)
 
 
-def two_layer_nn(X, K, dropout=0.5):
+def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     # Two-Layer Network
     l1 = FC(X, num_neurons=300, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
-    l2 = FC(l1, num_neurons=K, xavier=True, activation_fn='SoftMax', name="Output-Layer")
+    l2 = FC(l1, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
+            name="Output-Layer")
     layers = [l1, l2]
 
     return NN(X, layers)
 
 
-def three_layer_nn(X, K, dropout=0.5):
+def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     # Three-Layer Network
     l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
     l2 = FC(l1, num_neurons=100, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-2")
-    l3 = FC(l2, num_neurons=K, xavier=True, activation_fn='SoftMax', name="Output-Layer")
+    l3 = FC(l2, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
+            name="Output-Layer")
     layers = [l1, l2, l3]
 
     return NN(X, layers)
 
 
-def four_layer_nn(X, K, dropout=0.5):
+def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     # Four-Layer Network
     l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
@@ -238,14 +241,15 @@ def four_layer_nn(X, K, dropout=0.5):
             name="HL-2")
     l3 = FC(l2, num_neurons=50, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-2")
-    l4 = FC(l3, num_neurons=K, xavier=True, activation_fn='SoftMax', name="Output-Layer")
+    l4 = FC(l3, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
+            name="Output-Layer")
     layers = [l1, l2, l3, l4]
 
     return NN(X, layers)
 
 
-def train_fold(data_file, classify, test_split, num_layers, dropout, reg_lambda, dims, epochs,
-               log_freq, plot_title):
+def train_fold(data_file, classify, binary, actv_fn, test_split, num_layers, dropout, reg_lambda,
+               dims, epochs, log_freq, plot_title, cross_valid_dict):
     if classify == 'gender':
         if test_split >= 1.0:
             sys.exit("Error: For Sender classification, test_split [-t|--test_split] must " +
@@ -270,17 +274,34 @@ def train_fold(data_file, classify, test_split, num_layers, dropout, reg_lambda,
 
     X = np.vstack((train_X, test_X))
     y = np.hstack((train_y, test_y))
+
     K = np.max(y) + 1
+
+    if K == 2 and binary:
+        num_output_neurons = 1
+    else:
+        num_output_neurons = K
+
+    if num_output_neurons == 1:
+        out_actvation_fn = 'Sigmoid'
+    else:
+        out_actvation_fn = actv_fn
+
+    cross_valid_dict['training_hyper_params']['num_output_neurons'] = str(num_output_neurons)
+    cross_valid_dict['training_hyper_params']['activation_fn'] = out_actvation_fn
 
     # Build a NN
     if num_layers == 1:
-        nn = linear_classifier(X, K)
+        nn = linear_classifier(X, num_output_neurons, out_actvn_fn=out_actvation_fn)
     elif num_layers == 2:
-        nn = two_layer_nn(X, K, dropout=dropout)
+        nn = two_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
     elif num_layers == 3:
-        nn = three_layer_nn(X, K, dropout=dropout)
-    elif num_layers == 3:
-        nn = four_layer_nn(X, K, dropout=dropout)
+        nn = three_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
+    elif num_layers == 4:
+        nn = four_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
+    else:
+        sys.exit("Error: NN deeper than 4-layers are not implemented. Use flag [-l|--num_layers]" +
+                 " with value <= 4")
 
     # Create an optimizer
     adam = Adam(nn, step_size=1e-3, beta_1=0.9,  beta_2=0.999, reg_lambda=reg_lambda,
@@ -294,7 +315,9 @@ def train_fold(data_file, classify, test_split, num_layers, dropout, reg_lambda,
 
 
 def usage():
-    print("Usage: gait_classification.py [-c | --classify] <gender/id/height/weight> \n"
+    print("Usage: gait_classification.py [-a | --activation_fn] <output layer activation fn.>\n"
+          "                              [-b | --binary] \n"
+          "                              [-c | --classify] <gender/id/height/weight> \n"
           "                              [-d | --dropout] <dropout percent> \n"
           "                              [-D | --pca_dims] <no. of PCA dimensions to reduce data to> \n"
           "                              [-e | --epochs] <no. of training epochs> \n"
@@ -310,8 +333,10 @@ def usage():
 
 def main(argv):
     classify = 'gender'
+    actv_fn = 'softmax'
+    binary = False
     dims = 350
-    test_split = 6
+    test_split = 0.3
     num_layers = 3
     dropout = 0.5
     epochs = 100
@@ -323,11 +348,18 @@ def main(argv):
     log_freq = 1
     num_folds = 1
 
+    activations = {'linear' : 'Linear',
+                   'sigmoid' : 'Sigmoid',
+                   'tanh' : 'Tanh',
+                   'softmax' : 'SoftMax',
+                   'relu' : 'ReLU'
+                  }
+
     try:
-        opts, args = getopt.getopt(argv, "h pc:D:s:l:d:r:e:f:k:o:",
-                                   ["plot", "classify=", "pca_dims=" "test_split=", "num_layers=",
-                                    "dropout=", "reg=", "epochs=", "log_freq=", "num_folds=",
-                                    "out_file="])
+        opts, args = getopt.getopt(argv, "h bpa:c:D:s:l:d:r:e:f:k:o:",
+                                   ["plot", "activation_fn=", "classify=", "pca_dims=" "test_split=",
+                                    "num_layers=", "dropout=", "reg=", "epochs=", "log_freq=",
+                                    "num_folds=", "out_file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -336,6 +368,10 @@ def main(argv):
         if opt == '-h':
             usage()
             sys.exit()
+        elif opt in ("-a", "--activation_fn"):
+            actv_fn = arg.lower()
+        elif opt in ("-b", "--binary"):
+            binary = True
         elif opt in ("-p", "--plot"):
             plot = True
         elif opt in ("-c", "--classify"):
@@ -368,6 +404,9 @@ def main(argv):
     training_params_dict['data_source'] = 'robot'
     training_params_dict['classify'] = 'Subject Identification' if 'id' in classify else \
                                        classify + ' classification'
+    training_params_dict['activation_fn'] = activations[actv_fn]
+    training_params_dict['binary_classification'] = 'True' if binary else 'False'
+    training_params_dict['num_output_neurons'] = 'None'
     training_params_dict['model'] = 'Linear Classifier' if num_layers == 1 else \
                                     str(num_layers) + '-Layer NN'
     training_params_dict['dropout'] = dropout
@@ -380,8 +419,10 @@ def main(argv):
 
     # Train k-fold cross validation models and collect training logs
     for i in range(num_folds):
-        cross_valid_dict[i] = train_fold(data_file, classify, test_split, num_layers, dropout,
-                                         reg_lambda, dims, epochs, log_freq, plot_title)
+        print("Training No.:", i+1)
+        cross_valid_dict[i] = train_fold(data_file, classify, binary, activations[actv_fn],
+                                         test_split, num_layers, dropout, reg_lambda, dims, epochs,
+                                         log_freq, plot_title, cross_valid_dict)
 
         # Dump extracted data to file in JSON format
         with open(out_file, 'w') as fp:
