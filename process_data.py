@@ -55,9 +55,9 @@ def clean_data(data_dict):
 
 def segment_data(data_dict, seg_size):
     # Segment gait data into data points of size 'seg_size' frames
-    robot_subjects_dict = OrderedDict()
+    people_dict = OrderedDict()
     for samp_id, v_dict in data_dict.items():
-        robot_subjects_dict[samp_id] = OrderedDict()
+        people_dict[samp_id] = OrderedDict()
         segments_list = list()
         for k, v in v_dict.items():
             num_rows = v.shape[0]
@@ -66,8 +66,8 @@ def segment_data(data_dict, seg_size):
             # Unroll frames into a single long vector - Exclude the first column containing time
             segments_list.append(np.reshape(v[pad:,1:], (-1, 51*seg_size)).tolist())
 
-        robot_subjects_dict[samp_id]['X'] = segments_list
-    return robot_subjects_dict
+        people_dict[samp_id]['X'] = segments_list
+    return people_dict
 
 
 def categorize_to_bins(data, n_bins='auto', plot=False, axs=None, x_label='Value'):
@@ -98,7 +98,7 @@ def get_bin_index(bins, value):
     return int(idx)
 
 
-def get_subject_gender(id):
+def get_person_gender(id):
     labels_file = 'data/PARTICIPANTS_INFORMATION.xlsx'
     wb = xlrd.open_workbook(labels_file)
     labels_sheet = wb.sheet_by_index(0)
@@ -119,7 +119,7 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
     num_rows = labels_sheet.nrows
     print("num_rows: ", num_rows)
 
-    # Extract subject height and weight information
+    # Extract person height and weight information
     heights = list()
     weights = list()
     for r in range(1, num_rows):
@@ -149,8 +149,8 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
     w_bins_count = np.zeros(n_bins)
 
 
-    # Extract subject information (id, gender, height, weight, etc.) from labels file and
-    # add it to the respective subject data dictionary
+    # Extract person information (id, gender, height, weight, etc.) from labels file and
+    # add it to the respective person data dictionary
     for r in range(1, num_rows):
         row = labels_sheet.row_values(r)
         id = int(row[1]) - 1
@@ -190,53 +190,53 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
     return data_dict
 
 
-def process_robot_data(robot_files, robot_out_file, male=True, female=True, seg_sec=1.0,
-                       n_bins='auto', plot=False):
-    robot_files_dict = OrderedDict()
+def process_data(data_files, out_file, male=True, female=True, seg_sec=1.0, n_bins='auto',
+                 plot=False):
+    person_files_dict = OrderedDict()
     seg_size = int(15.0 * seg_sec)
 
-    # Extract Subject id and gait id and collect gait files per subject
-    for f in robot_files:
-        subject_id = int(f.split('_')[2]) - 1
+    # Extract person id and gait id, and collect gait files per person
+    for f in data_files:
+        person_id = int(f.split('_')[2]) - 1
         gait_id = int(f.split('_')[3].split('.')[0]) - 1
         try:
-            robot_files_dict[subject_id][gait_id] = f
+            person_files_dict[person_id][gait_id] = f
         except:
             files_dict = OrderedDict()
-            robot_files_dict[subject_id] = files_dict
-            robot_files_dict[subject_id][gait_id] = f
+            person_files_dict[person_id] = files_dict
+            person_files_dict[person_id][gait_id] = f
 
-    robot_data_dict = OrderedDict()
+    data_dict = OrderedDict()
     # Extract gait data from cvs files
-    for r in range(len(robot_files_dict)):
-        gender = get_subject_gender(r)
+    for r in range(len(person_files_dict)):
+        gender = get_person_gender(r)
         # Process data of the specified gender
         if (male and female) or (male and gender=='male') or (female and gender=='female'):
-            robot_data_dict[r] = OrderedDict()
-            files_count = len(robot_files_dict[r])
+            data_dict[r] = OrderedDict()
+            files_count = len(person_files_dict[r])
             for f in range(files_count):
-                robot_data_dict[r][f] = extract_data_from_cvs(robot_files_dict[r][f])
+                data_dict[r][f] = extract_data_from_cvs(person_files_dict[r][f])
 
     # Clean gait data - Standardize frame rate
-    clean_data(robot_data_dict)
+    clean_data(data_dict)
 
     # Segment gait data into data points
-    robot_subject_dict = segment_data(robot_data_dict, seg_size)
+    person_dict = segment_data(data_dict, seg_size)
 
-    # Extract subject information (id, gender, height, weight, etc.) from labels file
-    robot_subject_dict = extract_labels(robot_subject_dict, 'data/PARTICIPANTS_INFORMATION.xlsx',
-                                        male=male, female=female, n_bins=n_bins, plot=plot)
+    # Extract person information (id, gender, height, weight, etc.) from labels file
+    person_dict = extract_labels(person_dict, 'data/PARTICIPANTS_INFORMATION.xlsx', male=male,
+                                 female=female, n_bins=n_bins, plot=plot)
 
-    # Print subject information and data size
-    for k, v in robot_subject_dict.items():
+    # Print person information and data size
+    for k, v in person_dict.items():
         print("%d: X(%d, %d) - id: %d - age: %d - sex: %d - [%d] height: %.2f (%.1f:%.1f) - [%d] weight: %.2f (%.2f:%.2f)" %
               (k+1, len(v['X']), len(v['X'][0]), v['id']+1, v['age'], v['sex'], v['height_ctgry'],
                v['height'], v['height_bin'][0], v['height_bin'][1], v['weight_ctgry'], v['weight'],
                v['weight_bin'][0], v['weight_bin'][1]))
 
     # Dump extracted data to file in JSON format
-    with open(robot_out_file, 'w') as fp:
-        json.dump(robot_subject_dict, fp, indent=4)
+    with open(out_file, 'w') as fp:
+        json.dump(person_dict, fp, indent=4)
 
 
 def main(argv):
@@ -245,11 +245,15 @@ def main(argv):
     seg_sec = 1.0
     n_bins = 'auto'
     plot = False
+    robot = False
+    vicon = False
 
     rawdata_path = 'data/gait_files'
-    robot_out_file = 'data/robot_data_file.dat'
+    robot_out_file = 'data/robot-1_data_file.dat'
+    vicon_out_file = 'data/vicon_data_file.dat'
     try:
-        opts, args = getopt.getopt(argv, "h fmps:b:", ["female", "male", "plot", "sec=", "bins="])
+        opts, args = getopt.getopt(argv, "h fmprvs:b:", ["female", "male", "plot", "robot", "vicon",
+                                                         "sec=", "bins="])
     except getopt.GetoptError:
         sys.exit(2)
 
@@ -262,10 +266,22 @@ def main(argv):
             male = False
         elif opt in ("-p", "--log_excitations"):
             plot = True
+        elif opt in ("-r", "--robot"):
+            robot = True
+        elif opt in ("-v", "--vicon"):
+            vicon = True
         elif opt in ("-s", "--sec"):
             seg_sec = float(arg)
         elif opt in ("-b", "--bins"):
             n_bins = int(arg)
+
+    if not(robot or vicon):
+        sys.exit("Error: Choose either robot or vicon data to process with flags [-r|--robot] " +
+                 "or [-v|--vicon] respectively.")
+    elif robot and vicon:
+        sys.exit("Error: Choose only of the data sources with flags [-r|--robot] or [-v|--vicon] " +
+                 "respectively.")
+
 
     if male and female:
         print("Processing data of both genders")
@@ -276,15 +292,26 @@ def main(argv):
     else:
         sys.exit("Error: Remove atleast one of [-f|--female] or [-m|--male] flags.")
 
-    # Extract robot file names
-    _, _, filenames = next(os.walk(rawdata_path))
-    robot_files = list()
-    for f in filenames:
-        if 'robot' in f:
-            robot_files.append(join(rawdata_path, f))
+    if robot:
+        # Extract robot file names
+        _, _, filenames = next(os.walk(rawdata_path))
+        robot_files = list()
+        for f in filenames:
+            if 'robot' in f:
+                robot_files.append(join(rawdata_path, f))
 
-    process_robot_data(robot_files, robot_out_file, male=male, female=female, seg_sec=seg_sec,
-                       n_bins=n_bins, plot=plot)
+        process_data(robot_files, robot_out_file, male=male, female=female, seg_sec=seg_sec,
+                     n_bins=n_bins, plot=plot)
+    elif vicon:
+        # Extract vicon file names
+        _, _, filenames = next(os.walk(rawdata_path))
+        vicon_files = list()
+        for f in filenames:
+            if 'vicon' in f:
+                vicon_files.append(join(rawdata_path, f))
+
+        process_data(vicon_files, vicon_out_file, male=male, female=female, seg_sec=seg_sec,
+                     n_bins=n_bins, plot=plot)
 
 
 if __name__ == "__main__":
