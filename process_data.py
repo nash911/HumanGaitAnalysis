@@ -63,10 +63,10 @@ def segment_data(data_dict, seg_size):
             num_rows = v.shape[0]
             # Exclude the top few frames
             pad = num_rows % seg_size
-            # Unroll frames into a single long vector
-            segments_list.append(np.array(np.reshape(v[pad:,1:], (-1, 51*seg_size))))
+            # Unroll frames into a single long vector - Exclude the first column containing time
+            segments_list.append(np.reshape(v[pad:,1:], (-1, 51*seg_size)).tolist())
 
-        robot_subjects_dict[samp_id]['X'] = np.vstack(segments_list).tolist()
+        robot_subjects_dict[samp_id]['X'] = segments_list
     return robot_subjects_dict
 
 

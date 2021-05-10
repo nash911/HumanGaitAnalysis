@@ -62,12 +62,12 @@ def gender_data_split(data_file, test_perc=0.3):
     test_y = list()
     for k, v in data_dict.items():
         if v['id'] in test_ids:
-            X = np.array(v['X'], dtype=conf.dtype)
+            X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
             test_size = X.shape[0]
             test_X.append(X)
             test_y += [v['sex']] * test_size
         else:
-            X = np.array(v['X'], dtype=conf.dtype)
+            X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
             train_size = X.shape[0]
             train_X.append(X)
             train_y += [v['sex']] * train_size
@@ -100,17 +100,33 @@ def subjectId_data_split(data_file, test_perc=0.3):
     train_y = list()
     test_X = list()
     test_y = list()
+    # for k, v in data_dict.items():
+    #     X = np.array(v['X'], dtype=conf.dtype)
+    #     sample_size = X.shape[0]
+    #     order = np.random.permutation(sample_size)
+    #     X = X[order]
+    #     test_size = int(sample_size * test_perc)
+    #     train_size = sample_size - test_size
+    #     train_X.append(X[:train_size])
+    #     test_X.append(X[train_size:])
+    #     train_y += [v['id']] * train_size
+    #     test_y += [v['id']] * test_size
     for k, v in data_dict.items():
-        X = np.array(v['X'], dtype=conf.dtype)
-        sample_size = X.shape[0]
+        X = [np.array(x, dtype=conf.dtype) for x in v['X']]
+        sample_size = len(X)
         order = np.random.permutation(sample_size)
-        X = X[order]
-        test_size = int(sample_size * test_perc)
+        test_size = int(np.round(sample_size * test_perc))
         train_size = sample_size - test_size
-        train_X.append(X[:train_size])
-        test_X.append(X[train_size:])
-        train_y += [v['id']] * train_size
-        test_y += [v['id']] * test_size
+        num_train_smpls = 0
+        num_test_smpls = 0
+        for i in range(train_size):
+            train_X.append(X[order[i]])
+            num_train_smpls += X[order[i]].shape[0]
+        for i in range(train_size, sample_size):
+            test_X.append(X[order[i]])
+            num_test_smpls += X[order[i]].shape[0]
+        train_y += [v['id']] * num_train_smpls
+        test_y += [v['id']] * num_test_smpls
 
     train_X = np.vstack(train_X)
     test_X = np.vstack(test_X)
@@ -170,12 +186,12 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6):
     test_y = list()
     for k, v in data_dict.items():
         if v['id'] in test_ids:
-            X = np.array(v['X'], dtype=conf.dtype)
+            X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
             test_size = X.shape[0]
             test_X.append(X)
             test_y += [v[target+'_ctgry']] * test_size
         else:
-            X = np.array(v['X'], dtype=conf.dtype)
+            X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
             train_size = X.shape[0]
             train_X.append(X)
             train_y += [v[target+'_ctgry']] * train_size
