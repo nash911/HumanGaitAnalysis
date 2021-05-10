@@ -252,19 +252,19 @@ def train_fold(data_file, classify, binary, actv_fn, test_split, num_layers, dro
                dims, epochs, log_freq, plot_title, cross_valid_dict):
     if classify == 'gender':
         if test_split >= 1.0:
-            sys.exit("Error: For Sender classification, test_split [-t|--test_split] must " +
+            sys.exit("Error: For Sender classification, test_split [-s|--test_split] must " +
                       "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             gender_data_split(data_file, test_perc=test_split)
     elif 'id' in classify: # Subject Identification
         if test_split >= 1.0:
-            sys.exit("Error: For Subject Identification, test_split [-t|--test_split] must " +
+            sys.exit("Error: For Subject Identification, test_split [-s|--test_split] must " +
                       "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             subjectId_data_split(data_file, test_perc=test_split)
     elif classify in ['height', 'weight']:
         if test_split < 1.0:
-            sys.exit("Error: For Height/Weight classification, test_split [-t|--test_split] " +
+            sys.exit("Error: For Height/Weight classification, test_split [-s|--test_split] " +
                       "must be an integer value >= 1")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             height_weight_data_split(data_file, classify, test_smpl_per_ctgry=int(test_split))
@@ -357,9 +357,9 @@ def main(argv):
 
     try:
         opts, args = getopt.getopt(argv, "h bpa:c:D:s:l:d:r:e:f:k:o:",
-                                   ["plot", "activation_fn=", "classify=", "pca_dims=" "test_split=",
-                                    "num_layers=", "dropout=", "reg=", "epochs=", "log_freq=",
-                                    "num_folds=", "out_file="])
+                                   ["binary", "plot", "activation_fn=", "classify=", "pca_dims="
+                                    "test_split=", "num_layers=", "dropout=", "reg=", "epochs=",
+                                    "log_freq=", "num_folds=", "out_file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
