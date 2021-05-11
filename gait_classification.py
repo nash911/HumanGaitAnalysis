@@ -101,7 +101,7 @@ def subjectId_data_split(data_file, test_perc=0.3):
     test_X = list()
     test_y = list()
     # for k, v in data_dict.items():
-    #     X = np.array(v['X'], dtype=conf.dtype)
+    #     X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
     #     sample_size = X.shape[0]
     #     order = np.random.permutation(sample_size)
     #     X = X[order]
@@ -111,6 +111,7 @@ def subjectId_data_split(data_file, test_perc=0.3):
     #     test_X.append(X[train_size:])
     #     train_y += [v['id']] * train_size
     #     test_y += [v['id']] * test_size
+
     for k, v in data_dict.items():
         X = [np.array(x, dtype=conf.dtype) for x in v['X']]
         sample_size = len(X)
@@ -303,6 +304,8 @@ def train_fold(data_file, classify, binary, actv_fn, test_split, num_layers, dro
     else:
         out_actvation_fn = actv_fn
 
+    cross_valid_dict['training_hyper_params']['binary_classification'] = \
+        'True' if num_output_neurons == 1 else 'False'
     cross_valid_dict['training_hyper_params']['num_output_neurons'] = str(num_output_neurons)
     cross_valid_dict['training_hyper_params']['activation_fn'] = out_actvation_fn
 
