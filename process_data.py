@@ -249,7 +249,7 @@ def main(argv):
     vicon = False
 
     rawdata_path = 'data/gait_files'
-    robot_out_file = 'data/robot-1_data_file.dat'
+    robot_out_file = 'data/robot_data_file.dat'
     vicon_out_file = 'data/vicon_data_file.dat'
     try:
         opts, args = getopt.getopt(argv, "h fmprvs:b:", ["female", "male", "plot", "robot", "vicon",
@@ -307,7 +307,7 @@ def main(argv):
         _, _, filenames = next(os.walk(rawdata_path))
         vicon_files = list()
         for f in filenames:
-            if 'vicon' in f:
+            if 'vicon' in f.lower():
                 vicon_files.append(join(rawdata_path, f))
 
         process_data(vicon_files, vicon_out_file, male=male, female=female, seg_sec=seg_sec,
