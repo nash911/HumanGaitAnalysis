@@ -58,7 +58,7 @@ def clac_stats(train_dict):
         min_test_accur = np.min(median_test_accur)
         max_test_accur = np.max(median_test_accur)
 
-        print(v['label'])
+        print(v['label'], "[", median_test_accur.size, "]")
         print("Test Accuracy -- Mean: %.2f - STD: %.2f || Median: %.2f || Min: %.2f - Max: %.2f" %
               (avg_test_accur, std_test_accur, med_test_accur, min_test_accur, max_test_accur))
     print("---------------------------------------------------------------------------------------")
