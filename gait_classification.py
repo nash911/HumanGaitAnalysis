@@ -12,6 +12,7 @@ import getopt
 import numpy as np
 import json
 from collections import OrderedDict
+import warnings
 
 from pydl.nn.layers import FC
 from pydl.nn.layers import NN
@@ -288,8 +289,8 @@ def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     return NN(X, layers)
 
 
-def train_fold(data_file, task, binary, actv_fn, test_split, num_layers, step_size, dropout,
-               reg_lambda, dims, epochs, log_freq, plot_title, cross_valid_dict, regression=False):
+def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_split, num_layers,
+               step_size, dropout, reg_lambda, dims, epochs, log_freq, plot_title, cross_valid_dict):
     if task == 'gender':
         if test_split >= 1.0:
             sys.exit("Error: For Sender classification, test_split [-s|--test_split] must " +
@@ -355,7 +356,7 @@ def train_fold(data_file, task, binary, actv_fn, test_split, num_layers, step_si
     adam = Adam(nn, step_size=step_size, beta_1=0.9,  beta_2=0.999, reg_lambda=reg_lambda,
                 train_size=train_size, test_size=test_size, regression=regression)
     # Train NN
-    train_logs_dict = adam.train(X, y, normalize='pca', dims=dims, shuffle=False, epochs=epochs,
+    train_logs_dict = adam.train(X, y, normalize=normalize, dims=dims, shuffle=False, epochs=epochs,
                                  log_freq=log_freq, plot=plot_title)
     train_logs_dict['test_ids'] = test_ids_dict
 
@@ -372,6 +373,7 @@ def usage():
           "                              [-k | --num_folds] <no. of cross validation folds> \n"
           "                              [-l | --num_layers] <no. on nn layers> \n"
           "                              [-L | --lr] <learning rate> \n"
+          "                              [-n | --normalize] <mean/pca> \n"
           "                              [-o | --out_file] <training logs file path> \n"
           "                              [-p | --plot] \n"
           "                              [-r | --regul] <regularization lamda> \n"
@@ -386,6 +388,7 @@ def main(argv):
     regression = False
     actv_fn = 'softmax'
     binary = False
+    normalize = None
     dims = 350
     test_split = 0.3
     num_layers = 3
@@ -408,10 +411,11 @@ def main(argv):
                   }
 
     try:
-        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:e:f:k:o:",
+        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:",
                                    ["binary", "plot", "regression", "activation_fn=", "task=",
                                     "pca_dims=" "test_split=", "num_layers=", "dropout=", "lr=",
-                                    "regul=", "epochs=", "log_freq=", "num_folds=", "out_file="])
+                                    "regul=", "normalize=", "epochs=", "log_freq=", "num_folds=",
+                                    "out_file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -442,6 +446,8 @@ def main(argv):
             reg_lambda = float(arg)
         elif opt in ("-R", "--regression"):
             regression = True
+        elif opt in ("-n", "--normalize"):
+            normalize = arg.lower()
         elif opt in ("-e", "--epochs"):
             epochs = int(arg)
         elif opt in ("-f", "--log_freq"):
@@ -453,6 +459,13 @@ def main(argv):
 
     if dims > 1.0:
         dims = int(dims)
+
+    if normalize is None:
+        warnings.warn("WARNING: Ignoring data normalization!\n" +
+                      "To normalize/reduce training data, use flag [-n|--normalize] <pca/mean>")
+        input("Press Enter to continue...")
+    elif not normalize in ['pca', 'mean']:
+        sys.exit("Error: Unknown normalization type. Use flag [-n|--normalize] with <pca/mean>")
 
     if regression and ('gender' in task or 'id' in task):
         sys.exit("Error: Regression is only possible for 'height' and 'weight' tasks.\n" +
@@ -473,6 +486,7 @@ def main(argv):
     training_params_dict['num_output_neurons'] = 'None'
     training_params_dict['model'] = 'Linear Classifier' if num_layers == 1 else \
                                     str(num_layers) + '-Layer NN'
+    training_params_dict['normalize'] = 'None' if normalize is None else normalize
     training_params_dict['step_size'] = step_size
     training_params_dict['dropout'] = dropout
     training_params_dict['reg_lambda'] = reg_lambda
@@ -485,9 +499,10 @@ def main(argv):
     # Train k-fold cross validation models and collect training logs
     for i in range(num_folds):
         print("Training No.:", i+1)
-        cross_valid_dict[i] = train_fold(data_file, task, binary, activations[actv_fn], test_split,
-                                         num_layers, step_size, dropout, reg_lambda, dims, epochs,
-                                         log_freq, plot_title, cross_valid_dict, regression)
+        cross_valid_dict[i] = train_fold(data_file, task, regression, binary, activations[actv_fn],
+                                         normalize, test_split, num_layers, step_size, dropout,
+                                         reg_lambda, dims, epochs, log_freq, plot_title,
+                                         cross_valid_dict)
 
         # Dump extracted data to file in JSON format
         with open(out_file, 'w') as fp:
