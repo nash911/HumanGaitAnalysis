@@ -13,11 +13,9 @@ import numpy as np
 import os
 import json
 from collections import OrderedDict
-import re
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style
-import matplotlib.lines as mlines
 
 style.use('seaborn')
 
@@ -31,7 +29,7 @@ colors = ['red', 'blue', 'green', 'brown', 'pink', 'purple', 'orange', 'magenta'
 def plot_graphs(ax, plot_dict, conf_intervals=True, legend=True):
     ax.clear()
     num_plots = len(plot_dict)
-    ncol = int(np.ceil(num_plots/4))
+    ncol = int(np.ceil(num_plots / 4))
 
     if conf_intervals:
         for k, v in plot_dict.items():
@@ -40,7 +38,7 @@ def plot_graphs(ax, plot_dict, conf_intervals=True, legend=True):
             y_std = np.std(v['plot_arr'], axis=-1)
             ci = y_std
             ax.plot(epochs, y_mean, color=v['color'], label=v['label'])
-            ax.fill_between(epochs, (y_mean-ci), (y_mean+ci), color=v['color'], alpha=.1)
+            ax.fill_between(epochs, (y_mean - ci), (y_mean + ci), color=v['color'], alpha=.1)
 
         ax.legend(loc='upper center', bbox_to_anchor=(0.8, 0.3), ncol=ncol, prop={'size': 15})
         ax.set_xlabel('Epoch', fontsize=16)
@@ -51,7 +49,7 @@ def clac_stats(train_dict):
     print("---------------------------------------------------------------------------------------")
     for k, v in train_dict.items():
         test_accur = v['plot_arr']
-        median_test_accur = np.median(test_accur[-10:,:], axis=0)
+        median_test_accur = np.median(test_accur[-10:, :], axis=0)
         avg_test_accur = np.mean(median_test_accur)
         std_test_accur = np.std(median_test_accur)
         med_test_accur = np.median(median_test_accur)
@@ -75,7 +73,7 @@ def main(argv):
     loss = False
 
     try:
-        opts, args = getopt.getopt(argv, "h i:", ["inp_file="])
+        opts, args = getopt.getopt(argv, "h li:", ["loss", "inp_file="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -110,16 +108,16 @@ def main(argv):
                 try:
                     train_inst_dict['epochs'] = cross_valid_dict['0']['epochs']
                     test_accur = list()
-                    for i in range(len(cross_valid_dict)-1):
-                        test_accur.append(np.reshape(np.array(cross_valid_dict[str(i)]['test_accuracy']),
-                                                     (-1, 1)))
+                    for i in range(len(cross_valid_dict) - 1):
+                        test_accur.append(np.reshape(np.array(cross_valid_dict[str(i)]['test_loss'
+                                                     if loss else 'test_accuracy']), (-1, 1)))
 
                     test_accur = np.hstack(test_accur)
                     train_inst_dict['plot_arr'] = test_accur
                     train_inst_dict['color'] = colors[ind]
                     train_inst_dict['label'] = i_file.split('/')[1].split('.')[0]
                     train_dict[ind] = train_inst_dict
-                except:
+                except KeyError:
                     pass
 
             plot_graphs(axs, train_dict, conf_intervals=True)

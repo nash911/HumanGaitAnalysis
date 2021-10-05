@@ -1,14 +1,12 @@
 import sys
 import getopt
 import os
-from os.path import isfile, join
-import re
+from os.path import join
 import json
 import csv
 import xlrd
 import numpy as np
 from collections import OrderedDict
-from scipy import stats
 import matplotlib.pyplot as plt
 
 
@@ -34,7 +32,7 @@ def down_sample_data(data):
     # Down sample frames to the range of ~15 fps
     rows_list = list()
     for i, row in enumerate(data):
-        if i%2 == 1:
+        if i % 2 == 1:
             rows_list.append(row)
     return np.array(rows_list, dtype=np.float64)
 
@@ -43,9 +41,9 @@ def clean_data(data_dict):
     # Clean gait data by standardizing frame rate ...
     for samp_id, v_dict in data_dict.items():
         for k, v in v_dict.items():
-            median_time_diff = np.median(v[1:,0] - v[:-1,0])
-            min_time_diff = np.min(v[1:,0] - v[:-1,0])
-            max_time_diff = np.max(v[1:,0] - v[:-1,0])
+            median_time_diff = np.median(v[1:, 0] - v[:-1, 0])
+            # min_time_diff = np.min(v[1:, 0] - v[:-1, 0])
+            # max_time_diff = np.max(v[1:, 0] - v[:-1, 0])
             if median_time_diff < 0.06:
                 # If median of gait fps is not ~15 fps
                 data_dict[samp_id][k] = down_sample_data(v)
@@ -64,7 +62,7 @@ def segment_data(data_dict, seg_size):
             # Exclude the top few frames
             pad = num_rows % seg_size
             # Unroll frames into a single long vector - Exclude the first column containing time
-            segments_list.append(np.reshape(v[pad:,1:], (-1, 51*seg_size)).tolist())
+            segments_list.append(np.reshape(v[pad:, 1:], (-1, 51 * seg_size)).tolist())
 
         people_dict[samp_id]['X'] = segments_list
     return people_dict
@@ -88,10 +86,10 @@ def categorize_to_bins(data, n_bins='auto', plot=False, axs=None, x_label='Value
 
 def get_bin_index(bins, value):
     num_bins = len(bins)
-    idx = num_bins-2 # By default assigned to the last bin
+    idx = num_bins - 2  # By default assigned to the last bin
 
-    for i in range(num_bins-1):
-        if value >= bins[i] and value < bins[i+1]:
+    for i in range(num_bins - 1):
+        if value >= bins[i] and value < bins[i + 1]:
             idx = i
             break
 
@@ -125,7 +123,7 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
     for r in range(1, num_rows):
         gender = 'male' if labels_sheet.cell_value(r, 5) == 'MASCULINO' else 'female'
         # Process data of the specified gender
-        if (male and female) or (male and gender=='male') or (female and gender=='female'):
+        if (male and female) or (male and gender == 'male') or (female and gender == 'female'):
             heights.append(float(labels_sheet.cell_value(r, 6)))
             weights.append(float(labels_sheet.cell_value(r, 7)))
 
@@ -133,21 +131,20 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
     if plot:
         fig.suptitle('Height/Weight Distribution Histograms', fontsize=20)
 
-    height_bins, height_bins_count = categorize_to_bins(heights, n_bins=n_bins, plot=plot, axs=axs[0],
-                                                        x_label='Height')
-    weight_bins, weight_bins_count = categorize_to_bins(weights, n_bins=n_bins, plot=plot, axs=axs[1],
-                                                        x_label='Weight')
+    height_bins, height_bins_count = categorize_to_bins(heights, n_bins=n_bins, plot=plot,
+                                                        axs=axs[0], x_label='Height')
+    weight_bins, weight_bins_count = categorize_to_bins(weights, n_bins=n_bins, plot=plot,
+                                                        axs=axs[1], x_label='Weight')
 
     print("height_bins:\n", height_bins)
-    print("Height Min: %.1f  --  Max: %.1f" % (np.min(np.array(heights)), np.max(np.array(heights))))
+    print("Height Min: %.1f  --  Max: %.1f" %
+          (np.min(np.array(heights)), np.max(np.array(heights))))
     print("height_bins Diff:\n", (np.array(height_bins)[1:] - np.array(height_bins)[:-1]))
     print("\nweight_bins:\n", weight_bins)
-    print("Weight Min: %.2f  --  Max: %.2f" % (np.min(np.array(weights)), np.max(np.array(weights))))
+    print("Weight Min: %.2f  --  Max: %.2f" %
+          (np.min(np.array(weights)), np.max(np.array(weights))))
     print("weight_bins Diff:\n", (np.array(weight_bins)[1:] - np.array(weight_bins)[:-1]))
     print("\n")
-    h_bins_count = np.zeros(n_bins)
-    w_bins_count = np.zeros(n_bins)
-
 
     # Extract person information (id, gender, height, weight, etc.) from labels file and
     # add it to the respective person data dictionary
@@ -163,24 +160,18 @@ def extract_labels(data_dict, labels_file, male=True, female=True, n_bins='auto'
             data_dict[id]['height'] = float(row[6])
             h_idx = get_bin_index(height_bins, data_dict[id]['height'])
             data_dict[id]['height_ctgry'] = h_idx
-            data_dict[id]['height_bin'] = tuple((height_bins[h_idx], height_bins[h_idx+1]))
+            data_dict[id]['height_bin'] = tuple((height_bins[h_idx], height_bins[h_idx + 1]))
 
             data_dict[id]['weight'] = float(row[7])
             w_idx = get_bin_index(weight_bins, data_dict[id]['weight'])
             data_dict[id]['weight_ctgry'] = w_idx
-            data_dict[id]['weight_bin'] = tuple((weight_bins[w_idx], weight_bins[w_idx+1]))
-
-            h_bins_count[data_dict[id]['height_ctgry']] += 1
-            w_bins_count[data_dict[id]['weight_ctgry']] += 1
+            data_dict[id]['weight_bin'] = tuple((weight_bins[w_idx], weight_bins[w_idx + 1]))
         except KeyError:
             pass
 
     print("height_bins_count:", height_bins_count)
-    print("h_bins_count:     ", h_bins_count)
     print("weight_bins_count:", weight_bins_count)
-    print("w_bins_count:     ", w_bins_count)
     print("\n")
-
 
     if plot:
         plt.show(block=False)
@@ -201,7 +192,7 @@ def process_data(data_files, out_file, male=True, female=True, seg_sec=1.0, n_bi
         gait_id = int(f.split('_')[3].split('.')[0]) - 1
         try:
             person_files_dict[person_id][gait_id] = f
-        except:
+        except KeyError:
             files_dict = OrderedDict()
             person_files_dict[person_id] = files_dict
             person_files_dict[person_id][gait_id] = f
@@ -211,7 +202,7 @@ def process_data(data_files, out_file, male=True, female=True, seg_sec=1.0, n_bi
     for r in range(len(person_files_dict)):
         gender = get_person_gender(r)
         # Process data of the specified gender
-        if (male and female) or (male and gender=='male') or (female and gender=='female'):
+        if (male and female) or (male and gender == 'male') or (female and gender == 'female'):
             data_dict[r] = OrderedDict()
             files_count = len(person_files_dict[r])
             for f in range(files_count):
@@ -229,10 +220,11 @@ def process_data(data_files, out_file, male=True, female=True, seg_sec=1.0, n_bi
 
     # Print person information and data size
     for k, v in person_dict.items():
-        print("%d: X(%d, %d) - id: %d - age: %d - sex: %d - [%d] height: %.2f (%.1f:%.1f) - [%d] weight: %.2f (%.2f:%.2f)" %
-              (k+1, len(v['X']), len(v['X'][0]), v['id']+1, v['age'], v['sex'], v['height_ctgry'],
-               v['height'], v['height_bin'][0], v['height_bin'][1], v['weight_ctgry'], v['weight'],
-               v['weight_bin'][0], v['weight_bin'][1]))
+        print(("%d: X(%d, %d) - id: %d - age: %d - sex: %d - [%d] height: %.2f (%.1f:%.1f) - " +
+               "[%d] weight: %.2f (%.2f:%.2f)") %
+              (k + 1, len(v['X']), len(v['X'][0]), v['id'] + 1, v['age'], v['sex'],
+               v['height_ctgry'], v['height'], v['height_bin'][0], v['height_bin'][1],
+               v['weight_ctgry'], v['weight'], v['weight_bin'][0], v['weight_bin'][1]))
 
     # Dump extracted data to file in JSON format
     with open(out_file, 'w') as fp:
@@ -264,7 +256,7 @@ def main(argv):
             female = False
         elif opt in ("-m", "--male"):
             male = False
-        elif opt in ("-p", "--log_excitations"):
+        elif opt in ("-p", "--plot"):
             plot = True
         elif opt in ("-r", "--robot"):
             robot = True
@@ -281,7 +273,6 @@ def main(argv):
     elif robot and vicon:
         sys.exit("Error: Choose only of the data sources with flags [-r|--robot] or [-v|--vicon] " +
                  "respectively.")
-
 
     if male and female:
         print("Processing data of both genders")

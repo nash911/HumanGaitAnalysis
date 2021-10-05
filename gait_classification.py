@@ -15,7 +15,7 @@ from collections import OrderedDict
 import warnings
 
 from pydl.nn.layers import FC
-from pydl.nn.layers import NN
+from pydl.nn.nn import NN
 from pydl.training.training import Adam
 from pydl import conf
 
@@ -174,14 +174,14 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         test_ids_dict['train_ids'] = np.sort(train_ids).tolist()
 
         print("Test Subject Ids:\n", test_ids_dict['test_ids'])
-    else: # Classification Task
+    else:  # Classification Task
         category_dict = OrderedDict()
         for k, v in data_dict.items():
             try:
-                category_dict[v[target+'_ctgry']].append(v['id'])
-            except:
-                category_dict[v[target+'_ctgry']] = list()
-                category_dict[v[target+'_ctgry']].append(v['id'])
+                category_dict[v[target + '_ctgry']].append(v['id'])
+            except KeyError:
+                category_dict[v[target + '_ctgry']] = list()
+                category_dict[v[target + '_ctgry']].append(v['id'])
 
         test_subjects_dict = OrderedDict()
         test_ids = list()
@@ -194,7 +194,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         test_ids_dict = OrderedDict()
         print("Test Subject Ids per Category:")
         for i in range(len(test_subjects_dict)):
-            bin = data_dict[str(test_subjects_dict[i][0])][target+'_bin']
+            bin = data_dict[str(test_subjects_dict[i][0])][target + '_bin']
             test_ids_dict[str(bin)] = np.sort(test_subjects_dict[i]).tolist()
             print("Category-%d [%.2f : %.2f]: " % (i, bin[0], bin[1]))
             print("                           ", test_ids_dict[str(bin)])
@@ -211,7 +211,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
             if regression:
                 test_y += [v[target]] * test_size
             else:
-                test_y += [v[target+'_ctgry']] * test_size
+                test_y += [v[target + '_ctgry']] * test_size
         else:
             X = np.vstack(np.array(x, dtype=conf.dtype) for x in v['X'])
             train_size = X.shape[0]
@@ -219,7 +219,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
             if regression:
                 train_y += [v[target]] * train_size
             else:
-                train_y += [v[target+'_ctgry']] * train_size
+                train_y += [v[target + '_ctgry']] * train_size
 
     train_X = np.vstack(train_X)
     test_X = np.vstack(test_X)
@@ -290,23 +290,24 @@ def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
 
 
 def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_split, num_layers,
-               step_size, dropout, reg_lambda, dims, epochs, log_freq, plot_title, cross_valid_dict):
+               step_size, dropout, reg_lambda, dims, epochs, log_freq, plot_title,
+               cross_valid_dict):
     if task == 'gender':
         if test_split >= 1.0:
             sys.exit("Error: For Sender classification, test_split [-s|--test_split] must " +
-                      "be a float value < 1.0")
+                     "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             gender_data_split(data_file, test_perc=test_split)
-    elif 'id' in task: # Subject Identification
+    elif 'id' in task:  # Subject Identification
         if test_split >= 1.0:
             sys.exit("Error: For Subject Identification, test_split [-s|--test_split] must " +
-                      "be a float value < 1.0")
+                     "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             subjectId_data_split(data_file, test_perc=test_split)
     elif task in ['height', 'weight']:
         if test_split < 1.0:
             sys.exit("Error: For Height/Weight classification, test_split [-s|--test_split] " +
-                      "must be an integer value >= 1")
+                     "must be an integer value >= 1")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             height_weight_data_split(data_file, task, test_smpl_per_ctgry=int(test_split),
                                      regression=regression)
@@ -320,7 +321,7 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
     if regression:
         num_output_neurons = 1
         out_actvation_fn = 'Linear'
-    else: # Classification problem
+    else:  # Classification problem
         K = np.max(y) + 1
 
         if K == 2 and binary:
@@ -353,7 +354,7 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
                  " with value <= 4")
 
     # Create an optimizer
-    adam = Adam(nn, step_size=step_size, beta_1=0.9,  beta_2=0.999, reg_lambda=reg_lambda,
+    adam = Adam(nn, step_size=step_size, beta_1=0.9, beta_2=0.999, reg_lambda=reg_lambda,
                 train_size=train_size, test_size=test_size, regression=regression)
     # Train NN
     train_logs_dict = adam.train(X, y, normalize=normalize, dims=dims, shuffle=False, epochs=epochs,
@@ -367,7 +368,7 @@ def usage():
     print("Usage: gait_classification.py [-a | --activation_fn] <output layer activation fn.>\n"
           "                              [-b | --binary] \n"
           "                              [-d | --dropout] <dropout percent> \n"
-          "                              [-D | --pca_dims] <no. of PCA dimensions to reduce data to> \n"
+          "                              [-D | --pca_dims] <no. of PCA dims to reduce data to> \n"
           "                              [-e | --epochs] <no. of training epochs> \n"
           "                              [-f | --log_freq] <log frequency epochs> \n"
           "                              [-k | --num_folds] <no. of cross validation folds> \n"
@@ -393,7 +394,7 @@ def main(argv):
     test_split = 0.3
     num_layers = 3
     step_size = 1e-3
-    dropout = 0.5
+    dropout = None
     epochs = 100
     reg_lambda = 0.1
     data_file = 'data/robot_data_file.dat'
@@ -403,12 +404,12 @@ def main(argv):
     log_freq = 1
     num_folds = 1
 
-    activations = {'linear' : 'Linear',
-                   'sigmoid' : 'Sigmoid',
-                   'tanh' : 'Tanh',
-                   'softmax' : 'SoftMax',
-                   'relu' : 'ReLU'
-                  }
+    activations = {'linear': 'Linear',
+                   'sigmoid': 'Sigmoid',
+                   'tanh': 'Tanh',
+                   'softmax': 'SoftMax',
+                   'relu': 'ReLU'
+                   }
 
     try:
         opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:",
@@ -464,7 +465,7 @@ def main(argv):
         warnings.warn("WARNING: Ignoring data normalization!\n" +
                       "To normalize/reduce training data, use flag [-n|--normalize] <pca/mean>")
         input("Press Enter to continue...")
-    elif not normalize in ['pca', 'mean']:
+    elif normalize not in ['pca', 'mean']:
         sys.exit("Error: Unknown normalization type. Use flag [-n|--normalize] with <pca/mean>")
 
     if regression and ('gender' in task or 'id' in task):
@@ -475,8 +476,8 @@ def main(argv):
     cross_valid_dict = OrderedDict()
     training_params_dict = OrderedDict()
     training_params_dict['data_source'] = 'robot'
-    training_params_dict['task'] = 'Subject Identification' if 'id' in task else \
-                                       task + (' regression' if regression else ' classification')
+    training_params_dict['task'] = 'Subject Identification' if 'id' in task else task + \
+        (' regression' if regression else ' classification')
     training_params_dict['activation_fn'] = activations[actv_fn]
     if regression:
         training_params_dict['regression'] = 'True'
@@ -488,9 +489,11 @@ def main(argv):
                                     str(num_layers) + '-Layer NN'
     training_params_dict['normalize'] = 'None' if normalize is None else normalize
     training_params_dict['step_size'] = step_size
-    training_params_dict['dropout'] = dropout
+    if dropout is not None and dropout < 1.0:
+        training_params_dict['dropout'] = dropout
     training_params_dict['reg_lambda'] = reg_lambda
-    training_params_dict['pca_dims'] = dims
+    if normalize == 'pca':
+        training_params_dict['pca_dims'] = dims
     cross_valid_dict['training_hyper_params'] = training_params_dict
 
     with open(out_file, 'w') as fp:
@@ -498,7 +501,7 @@ def main(argv):
 
     # Train k-fold cross validation models and collect training logs
     for i in range(num_folds):
-        print("Training No.:", i+1)
+        print("Training No.:", i + 1)
         cross_valid_dict[i] = train_fold(data_file, task, regression, binary, activations[actv_fn],
                                          normalize, test_split, num_layers, step_size, dropout,
                                          reg_lambda, dims, epochs, log_freq, plot_title,
