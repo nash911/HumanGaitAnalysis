@@ -10,6 +10,7 @@
 import sys
 import getopt
 import numpy as np
+import os
 import json
 from collections import OrderedDict
 import warnings
@@ -18,6 +19,25 @@ from pydl.nn.layers import FC
 from pydl.nn.nn import NN
 from pydl.training.training import Adam
 from pydl import conf
+
+
+def auto_generate_log_file_name(task, nn_type, num_layers):
+    _, _, filenames = next(os.walk('output/'))
+    task_files = list()
+    for f in filenames:
+        if task + '_' + nn_type in f:
+            task_files.append(f)
+
+    file_ids = [0]
+    for f in task_files:
+        file_ids.append(int(f.split('_')[3].split('.')[0]))
+
+    file_ids.sort()
+    new_id = file_ids[-1] + 1
+    new_file_name = \
+        'output/' + task + '_' + nn_type + '_' + str(num_layers) + '_' + str(new_id) + '.dat'
+
+    return new_file_name
 
 
 def gender_data_split(data_file, test_perc=0.3):
@@ -381,11 +401,13 @@ def usage():
           "                              [-R | --regression] \n"
           "                              [-s | --test_split] <test split of the data> \n"
           "                              [-t | --task] <gender/id/height/weight> \n"
+          "                              [-T | --nn_type] <fc/cnn/rnn/lstm> \n"
           )
 
 
 def main(argv):
     task = 'gender'
+    nn_type = 'FC'
     regression = False
     actv_fn = 'softmax'
     binary = False
@@ -412,11 +434,11 @@ def main(argv):
                    }
 
     try:
-        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:",
+        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:T:",
                                    ["binary", "plot", "regression", "activation_fn=", "task=",
                                     "pca_dims=" "test_split=", "num_layers=", "dropout=", "lr=",
                                     "regul=", "normalize=", "epochs=", "log_freq=", "num_folds=",
-                                    "out_file="])
+                                    "out_file=", "nn_type="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -457,9 +479,15 @@ def main(argv):
             num_folds = int(arg)
         elif opt in ("-o", "--out_file"):
             out_file = arg
+        elif opt in ("-T", "--nn_type"):
+            nn_type = arg.upper()
 
     if dims > 1.0:
         dims = int(dims)
+
+    if nn_type not in ['FC', 'CNN', 'RNN', 'LSTM']:
+        sys.exit("Error: Unknown neural network type. Use flag [-T|--nn_type] with " +
+                 "<fc/cnn/rnn/lstm>")
 
     if normalize is None:
         warnings.warn("WARNING: Ignoring data normalization!\n" +
@@ -471,6 +499,11 @@ def main(argv):
     if regression and ('gender' in task or 'id' in task):
         sys.exit("Error: Regression is only possible for 'height' and 'weight' tasks.\n" +
                  "Remove flag [-R|--regression] from the command line.")
+
+    if out_file.lower() == 'auto':
+        out_file = auto_generate_log_file_name(task, nn_type, num_layers)
+
+    print("Training log file: ", out_file)
 
     # Create cross validation training logs dict, and store training hyper parameters
     cross_valid_dict = OrderedDict()
