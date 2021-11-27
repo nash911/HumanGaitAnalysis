@@ -17,7 +17,7 @@ import warnings
 
 from pydl.nn.layers import FC
 from pydl.nn.nn import NN
-from pydl.training.training import Adam
+from pydl.training.adam import Adam
 from pydl import conf
 
 
@@ -270,7 +270,7 @@ def linear_classifier(X, num_output_neurons, out_actvn_fn):
     return NN(X, layers)
 
 
-def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
+def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
     # Two-Layer Network
     l1 = FC(X, num_neurons=300, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
@@ -281,7 +281,7 @@ def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     return NN(X, layers)
 
 
-def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
+def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
     # Three-Layer Network
     l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
@@ -294,7 +294,7 @@ def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
     return NN(X, layers)
 
 
-def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=0.5):
+def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
     # Four-Layer Network
     l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
             name="HL-1")
@@ -355,7 +355,7 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
             out_actvation_fn = actv_fn
 
         cross_valid_dict['training_hyper_params']['binary_classification'] = \
-            'True' if num_output_neurons == 1 else 'False'
+            'True' if num_output_neurons == 1 and binary else 'False'
 
     cross_valid_dict['training_hyper_params']['num_output_neurons'] = str(num_output_neurons)
     cross_valid_dict['training_hyper_params']['activation_fn'] = out_actvation_fn
@@ -386,7 +386,7 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
 
 def usage():
     print("Usage: gait_classification.py [-a | --activation_fn] <output layer activation fn.>\n"
-          "                              [-b | --binary] \n"
+          "                              [-b | --not_binary] \n"
           "                              [-d | --dropout] <dropout percent> \n"
           "                              [-D | --pca_dims] <no. of PCA dims to reduce data to> \n"
           "                              [-e | --epochs] <no. of training epochs> \n"
@@ -410,7 +410,7 @@ def main(argv):
     nn_type = 'FC'
     regression = False
     actv_fn = 'softmax'
-    binary = False
+    binary = True
     normalize = None
     dims = 350
     test_split = 0.3
@@ -435,7 +435,7 @@ def main(argv):
 
     try:
         opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:T:",
-                                   ["binary", "plot", "regression", "activation_fn=", "task=",
+                                   ["not_binary", "plot", "regression", "activation_fn=", "task=",
                                     "pca_dims=" "test_split=", "num_layers=", "dropout=", "lr=",
                                     "regul=", "normalize=", "epochs=", "log_freq=", "num_folds=",
                                     "out_file=", "nn_type="])
@@ -449,8 +449,8 @@ def main(argv):
             sys.exit()
         elif opt in ("-a", "--activation_fn"):
             actv_fn = arg.lower()
-        elif opt in ("-b", "--binary"):
-            binary = True
+        elif opt in ("-b", "--not_binary"):
+            binary = False
         elif opt in ("-p", "--plot"):
             plot = True
         elif opt in ("-t", "--task"):
