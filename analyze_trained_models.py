@@ -11,6 +11,7 @@ import sys
 import getopt
 import numpy as np
 import os
+from os.path import join
 import json
 from collections import OrderedDict
 import matplotlib.pyplot as plt
@@ -45,35 +46,84 @@ def plot_graphs(ax, plot_dict, conf_intervals=True, legend=True):
         ax.set_ylabel('Accuracy', fontsize=16)
 
 
-def clac_stats(train_dict):
+def clac_stats(train_dict, metric_title):
     print("---------------------------------------------------------------------------------------")
     for k, v in train_dict.items():
-        test_accur = v['plot_arr']
-        median_test_accur = np.median(test_accur[-10:, :], axis=0)
-        avg_test_accur = np.mean(median_test_accur)
-        std_test_accur = np.std(median_test_accur)
-        med_test_accur = np.median(median_test_accur)
-        min_test_accur = np.min(median_test_accur)
-        max_test_accur = np.max(median_test_accur)
+        eval_metric = v['plot_arr']
+        median_eval_metric = np.median(eval_metric[-10:, :], axis=0)
+        avg_eval_metric = np.mean(median_eval_metric)
+        std_eval_metric = np.std(median_eval_metric)
+        med_eval_metric = np.median(median_eval_metric)
+        min_eval_metric = np.min(median_eval_metric)
+        max_eval_metric = np.max(median_eval_metric)
 
-        print(v['label'], "[", median_test_accur.size, "]")
-        print("Test Accuracy -- Mean: %.2f - STD: %.2f || Median: %.2f || Min: %.2f - Max: %.2f" %
-              (avg_test_accur, std_test_accur, med_test_accur, min_test_accur, max_test_accur))
+        print(v['label'], "[", median_eval_metric.size, "]")
+        print((metric_title + " -- Mean: %.2f - STD: %.2f || Median: %.2f || Min: %.2f - Max: %.2f")
+              % (avg_eval_metric, std_eval_metric, med_eval_metric, min_eval_metric,
+                 max_eval_metric))
     print("---------------------------------------------------------------------------------------")
 
 
 def usage():
-    print("Usage: gait_classification.py [-i | --inp_file] <file path containing training_logs> \n"
-          "                              [-l | --loss] <loss plot flag> \n"
+    print("Usage: analyze_trained_models.py [-i | --inp_file] <file path of training_logs> \n"
+          "                                 "
+          "[-m | --metric] <train_loss/test_loss/train_accu/test_accu> \n"
+          "                                 [-e | --epochs] <max no. of epochs to evaluate> \n"
           )
 
 
+def extract_files(key):
+    _, _, filenames = next(os.walk('output/'))
+    input_files = list()
+    for f in filenames:
+        if key in f:
+            input_files.append(join('output/', f))
+
+    input_files.sort()
+    return input_files
+
+
+def extract_metric_title(metric):
+    if 'train' in metric:
+        if 'loss' in metric:
+            metric = 'train_loss'
+            metric_title = 'Train Loss'
+        elif 'accu' in metric:
+            metric = 'train_accuracy'
+            metric_title = 'Train Accuracy'
+    elif 'test' in metric:
+        if 'loss' in metric:
+            metric = 'test_loss'
+            metric_title = 'Test Loss'
+        elif 'accu' in metric:
+            metric = 'test_accuracy'
+            metric_title = 'Test Accuracy'
+
+    return metric, metric_title
+
+
+def get_input_files(input_files):
+    for i_file in input_files:
+        if '*' in i_file:
+            key = i_file.split('*')[0]
+            input_files += extract_files(key)
+
+    for i_file in list(input_files):
+        if '*' in i_file:
+            input_files.remove(i_file)
+            input_files.sort()
+
+    return input_files
+
+
 def main(argv):
-    inp_file = list()
-    loss = False
+    input_files = list()
+    task = list()
+    metric = 'test_accuracy'
+    epochs = None
 
     try:
-        opts, args = getopt.getopt(argv, "h li:", ["loss", "inp_file="])
+        opts, args = getopt.getopt(argv, "h i:m:e:", ["inp_file=", "metric=", "epochs="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -83,37 +133,57 @@ def main(argv):
             usage()
             sys.exit()
         elif opt in ("-i", "--inp_file"):
-            inp_file.append(arg)
-        elif opt in ("-l", "--loss"):
-            loss = True
+            input_files.append(arg)
+        elif opt in ("-m", "--metric"):
+            metric = arg.lower()
+        elif opt in ("-m", "--metric"):
+            epochs = int(arg)
+
+    metric, metric_title = extract_metric_title(metric)
+    input_files = get_input_files(input_files)
+
+    for i_file in input_files:
+        if 'id' in i_file.lower() and 'ID' not in task:
+            task.append('ID')
+        elif 'gender' in i_file.lower() and 'Gender' not in task:
+            task.append('Gender')
+        elif 'height' in i_file.lower() and 'Height' not in task:
+            task.append('Height')
+        elif 'weight' in i_file.lower() and 'Weight' not in task:
+            task.append('Weight')
+
+    task_title = ''
+    for tsk in task:
+        task_title += (tsk + ' ')
+    title = task_title + '- ' + metric_title + ' Plot'
 
     def animate(i):
         global prev_plot_time
 
         replot = False
-        for i_file in inp_file:
-            inp_file_mod_time = os.stat(i_file)[8]
-            if (inp_file_mod_time > prev_plot_time):
+        for i_file in input_files:
+            input_files_mod_time = os.stat(i_file)[8]
+            if (input_files_mod_time > prev_plot_time):
                 prev_plot_time = os.stat(i_file)[8]
                 replot = True
                 break
 
         if replot:
             train_dict = OrderedDict()
-            for ind, i_file in enumerate(inp_file):
+            for ind, i_file in enumerate(input_files):
                 train_inst_dict = OrderedDict()
                 with open(i_file) as inp_f:
                     cross_valid_dict = json.load(inp_f)
 
                 try:
                     train_inst_dict['epochs'] = cross_valid_dict['0']['epochs']
-                    test_accur = list()
+                    eval_metric = list()
                     for i in range(len(cross_valid_dict) - 1):
-                        test_accur.append(np.reshape(np.array(cross_valid_dict[str(i)]['test_loss'
-                                                     if loss else 'test_accuracy']), (-1, 1)))
+                        eval_metric.append(np.reshape(np.array(cross_valid_dict[str(i)][metric]),
+                                                      (-1, 1)))
 
-                    test_accur = np.hstack(test_accur)
-                    train_inst_dict['plot_arr'] = test_accur
+                    eval_metric = np.hstack(eval_metric)
+                    train_inst_dict['plot_arr'] = eval_metric
                     train_inst_dict['color'] = colors[ind]
                     train_inst_dict['label'] = i_file.split('/')[1].split('.')[0]
                     train_dict[ind] = train_inst_dict
@@ -121,10 +191,10 @@ def main(argv):
                     pass
 
             plot_graphs(axs, train_dict, conf_intervals=True)
-            clac_stats(train_dict)
+            clac_stats(train_dict, metric_title)
 
     fig, axs = plt.subplots(1, 1, sharex=True)
-    fig.suptitle('Test Accuracy Plot', fontsize=20)
+    fig.suptitle(title, fontsize=20)
 
     _ = animation.FuncAnimation(fig, animate, interval=100)
     plt.show()
