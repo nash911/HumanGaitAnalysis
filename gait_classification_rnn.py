@@ -16,13 +16,25 @@ from collections import OrderedDict
 import warnings
 
 from pydl.nn.layers import FC
+from pydl.nn.rnn import RNN
+from pydl.nn.lstm import LSTM
+from pydl.nn.gru import GRU
 from pydl.nn.nn import NN
+from pydl.training.momentum import Momentum
 from pydl.training.adam import Adam
 from pydl import conf
 
+np.random.seed(11421111)
 
-def auto_generate_log_file_name(task, nn_type, num_layers):
-    _, _, filenames = next(os.walk('output/'))
+
+def auto_generate_log_file_name(task, nn_type, num_layers, out_path):
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+
+    if out_path[-1] != '/':
+        out_path += '/'
+
+    _, _, filenames = next(os.walk(out_path))
     task_files = list()
     for f in filenames:
         if task + '_' + nn_type in f:
@@ -35,7 +47,7 @@ def auto_generate_log_file_name(task, nn_type, num_layers):
     file_ids.sort()
     new_id = file_ids[-1] + 1
     new_file_name = \
-        'output/' + task + '_' + nn_type + '_' + str(num_layers) + '_' + str(new_id) + '.dat'
+        out_path + task + '_' + nn_type + '_' + str(num_layers) + '_' + str(new_id) + '.dat'
 
     return new_file_name
 
@@ -261,19 +273,21 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
     return train_X, test_X, train_y, test_y, test_ids_dict
 
 
-def linear_classifier(X, num_output_neurons, out_actvn_fn):
-    # Linear Classifier
-    l1 = FC(X, num_neurons=num_output_neurons, bias=True, xavier=True, activation_fn=out_actvn_fn,
-            name="Output-Layer")
-    layers = [l1]
-
-    return NN(X, layers)
-
-
-def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
-    # Two-Layer Network
-    l1 = FC(X, num_neurons=300, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-1")
+def single_layer_recurrent_nn(X, nn_type, seq_len, num_output_neurons, out_actvn_fn, dropout=None,
+                              tune=False):
+    # Single Layer Recurrent Network
+    if nn_type == 'RNN':
+        l1 = RNN(X[0], num_neurons=50, seq_len=seq_len, xavier=True, activation_fn='Tanh',
+                 architecture_type='many_to_one', dropout=dropout, tune_internal_states=tune,
+                 name="RNN-1")
+    elif nn_type == 'LSTM':
+        l1 = LSTM(X[0], num_neurons=50, bias=1.0, seq_len=seq_len, xavier=True,
+                  architecture_type='many_to_one', dropout=dropout, tune_internal_states=tune,
+                  name="LSTM-1")
+    elif nn_type == 'GRU':
+        l1 = GRU(X[0], num_neurons=50, bias=1.0, seq_len=seq_len, xavier=True,
+                 architecture_type='many_to_one', dropout=dropout, reset_pre_transform=True,
+                 tune_internal_states=tune, name="GRU-1")
     l2 = FC(l1, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
             name="Output-Layer")
     layers = [l1, l2]
@@ -281,12 +295,30 @@ def two_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
     return NN(X, layers)
 
 
-def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
-    # Three-Layer Network
-    l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-1")
-    l2 = FC(l1, num_neurons=100, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-2")
+def two_layer_recurrent_nn(X, nn_type, seq_len, num_output_neurons, out_actvn_fn, dropout=None,
+                           tune=False):
+    # Two-Layer Recurrent Network
+    if nn_type == 'RNN':
+        l1 = RNN(X[0], num_neurons=50, seq_len=seq_len, xavier=True, activation_fn='Tanh',
+                 architecture_type='many_to_many', dropout=dropout, tune_internal_states=tune,
+                 name="RNN-1")
+        l2 = RNN(l1, num_neurons=50, seq_len=seq_len, xavier=True, activation_fn='Tanh',
+                 architecture_type='many_to_one', dropout=dropout, tune_internal_states=tune,
+                 name="RNN-2")
+    elif nn_type == 'LSTM':
+        l1 = LSTM(X[0], num_neurons=50, bias=True, seq_len=seq_len, xavier=True,
+                  architecture_type='many_to_many', dropout=dropout, tune_internal_states=tune,
+                  name="LSTM-1")
+        l2 = LSTM(l1, num_neurons=50, bias=True, seq_len=seq_len, xavier=True,
+                  architecture_type='many_to_one', dropout=dropout, tune_internal_states=tune,
+                  name="LSTM-2")
+    elif nn_type == 'GRU':
+        l1 = GRU(X[0], num_neurons=50, bias=True, seq_len=seq_len, xavier=True,
+                 architecture_type='many_to_many', dropout=dropout, reset_pre_transform=True,
+                 tune_internal_states=tune, name="LSTM-1")
+        l2 = GRU(l1, num_neurons=50, bias=True, seq_len=seq_len, xavier=True,
+                 architecture_type='many_to_one', dropout=dropout, reset_pre_transform=True,
+                 tune_internal_states=tune, name="LSTM-2")
     l3 = FC(l2, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
             name="Output-Layer")
     layers = [l1, l2, l3]
@@ -294,27 +326,12 @@ def three_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
     return NN(X, layers)
 
 
-def four_layer_nn(X, num_output_neurons, out_actvn_fn, dropout=None):
-    # Four-Layer Network
-    l1 = FC(X, num_neurons=200, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-1")
-    l2 = FC(l1, num_neurons=100, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-2")
-    l3 = FC(l2, num_neurons=50, xavier=True, activation_fn='ReLU', batchnorm=True, dropout=dropout,
-            name="HL-2")
-    l4 = FC(l3, num_neurons=num_output_neurons, xavier=True, activation_fn=out_actvn_fn,
-            name="Output-Layer")
-    layers = [l1, l2, l3, l4]
-
-    return NN(X, layers)
-
-
-def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_split, num_layers,
-               step_size, dropout, reg_lambda, dims, epochs, log_freq, plot_title,
+def train_fold(data_file, task, nn_type, regression, binary, normalize, actv_fn, test_split,
+               num_layers, step_size, dropout, reg_lambda, tune, epochs, log_freq, plot_title,
                cross_valid_dict):
     if task == 'gender':
         if test_split >= 1.0:
-            sys.exit("Error: For Sender classification, test_split [-s|--test_split] must " +
+            sys.exit("Error: For Gender classification, test_split [-s|--test_split] must " +
                      "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             gender_data_split(data_file, test_perc=test_split)
@@ -337,6 +354,9 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
 
     X = np.vstack((train_X, test_X))
     y = np.hstack((train_y, test_y))
+
+    X = X.reshape(X.shape[0], -1, 51)
+    seq_len = X.shape[1]
 
     if regression:
         num_output_neurons = 1
@@ -362,23 +382,21 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
 
     # Build a NN
     if num_layers == 1:
-        nn = linear_classifier(X, num_output_neurons, out_actvn_fn=out_actvation_fn)
+        nn = single_layer_recurrent_nn(X, nn_type, seq_len, num_output_neurons, out_actvation_fn,
+                                       dropout, tune)
     elif num_layers == 2:
-        nn = two_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
-    elif num_layers == 3:
-        nn = three_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
-    elif num_layers == 4:
-        nn = four_layer_nn(X, num_output_neurons, out_actvn_fn=out_actvation_fn, dropout=dropout)
+        nn = two_layer_recurrent_nn(X, nn_type, seq_len, num_output_neurons, out_actvation_fn,
+                                    dropout, tune)
     else:
-        sys.exit("Error: NN deeper than 4-layers are not implemented. Use flag [-l|--num_layers]" +
-                 " with value <= 4")
+        sys.exit("Error: Recurrent-NN deeper than 2-layers are not implemented. Use flag" +
+                 " [-l|--num_layers] with value <= 2")
 
     # Create an optimizer
     adam = Adam(nn, step_size=step_size, beta_1=0.9, beta_2=0.999, reg_lambda=reg_lambda,
                 train_size=train_size, test_size=test_size, regression=regression)
     # Train NN
-    train_logs_dict = adam.train(X, y, normalize=normalize, dims=dims, shuffle=False, epochs=epochs,
-                                 log_freq=log_freq, plot=plot_title)
+    train_logs_dict = adam.train_recurrent(X, y, batch_size=1, epochs=epochs, log_freq=log_freq,
+                                           normalize=normalize, temperature=1.0, plot=plot_title)
     train_logs_dict['test_ids'] = test_ids_dict
 
     return train_logs_dict
@@ -388,40 +406,40 @@ def usage():
     print("Usage: gait_classification.py [-a | --activation_fn] <output layer activation fn.>\n"
           "                              [-b | --not_binary] \n"
           "                              [-d | --dropout] <dropout percent> \n"
-          "                              [-D | --pca_dims] <no. of PCA dims to reduce data to> \n"
           "                              [-e | --epochs] <no. of training epochs> \n"
           "                              [-f | --log_freq] <log frequency epochs> \n"
+          "                              [-i | --tune_int_states] \n"
           "                              [-k | --num_folds] <no. of cross validation folds> \n"
           "                              [-l | --num_layers] <no. on nn layers> \n"
           "                              [-L | --lr] <learning rate> \n"
-          "                              [-n | --normalize] <mean/pca> \n"
+          "                              [-n | --normalize] \n"
           "                              [-o | --out_file] <training logs file path> \n"
-          "                              [-p | --plot] \n"
+          "                              [-p | --out_path] <output file path> \n"
           "                              [-r | --regul] <regularization lamda> \n"
           "                              [-R | --regression] \n"
           "                              [-s | --test_split] <test split of the data> \n"
           "                              [-t | --task] <gender/id/height/weight> \n"
-          "                              [-T | --nn_type] <fc/cnn/rnn/lstm> \n"
+          "                              [-T | --nn_type] <rnn/lstm/gru> \n"
           )
 
 
 def main(argv):
     task = 'gender'
-    nn_type = 'FC'
+    nn_type = 'RNN'
     regression = False
     actv_fn = 'softmax'
     binary = True
-    normalize = None
-    dims = 350
+    normalize = False
     test_split = 0.3
-    num_layers = 3
+    num_layers = 2
     step_size = 1e-3
     dropout = None
-    epochs = 100
-    reg_lambda = 0.1
+    epochs = 50
+    reg_lambda = 0.0
+    tune = False
     data_file = 'data/robot_data_file.dat'
     out_file = 'output/train_log.dat'
-    plot = False
+    out_path = 'output/'
     plot_title = None
     log_freq = 1
     num_folds = 1
@@ -434,11 +452,11 @@ def main(argv):
                    }
 
     try:
-        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:T:",
-                                   ["not_binary", "plot", "regression", "activation_fn=", "task=",
-                                    "pca_dims=" "test_split=", "num_layers=", "dropout=", "lr=",
-                                    "regul=", "normalize=", "epochs=", "log_freq=", "num_folds=",
-                                    "out_file=", "nn_type="])
+        opts, args = getopt.getopt(argv, "h bRnia:t:s:l:d:L:r:e:f:k:o:T:p:",
+                                   ["not_binary", "regression", "normalize", "tune_int_states",
+                                    "activation_fn=", "task=", "test_split=", "num_layers=",
+                                    "dropout=", "lr=", "regul=", "epochs=", "log_freq=",
+                                    "num_folds=", "out_file=", "nn_type=", "out_path"])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -451,12 +469,8 @@ def main(argv):
             actv_fn = arg.lower()
         elif opt in ("-b", "--not_binary"):
             binary = False
-        elif opt in ("-p", "--plot"):
-            plot = True
         elif opt in ("-t", "--task"):
             task = arg.lower()
-        elif opt in ("-D", "--pca_dims"):
-            dims = float(arg)
         elif opt in ("-s", "--test_split"):
             test_split = float(arg)
         elif opt in ("-l", "--num_layers"):
@@ -470,7 +484,7 @@ def main(argv):
         elif opt in ("-R", "--regression"):
             regression = True
         elif opt in ("-n", "--normalize"):
-            normalize = arg.lower()
+            normalize = True
         elif opt in ("-e", "--epochs"):
             epochs = int(arg)
         elif opt in ("-f", "--log_freq"):
@@ -481,27 +495,26 @@ def main(argv):
             out_file = arg
         elif opt in ("-T", "--nn_type"):
             nn_type = arg.upper()
+        elif opt in ("-i", "--tune_int_states"):
+            tune = True
+        elif opt in ("-p", "--out_path"):
+            out_path += arg
 
-    if dims > 1.0:
-        dims = int(dims)
-
-    if nn_type not in ['FC', 'CNN', 'RNN', 'LSTM']:
+    if nn_type not in ['RNN', 'LSTM', 'GRU']:
         sys.exit("Error: Unknown neural network type. Use flag [-T|--nn_type] with " +
-                 "<fc/cnn/rnn/lstm>")
+                 "<rnn/lstm/gru>")
 
-    if normalize is None:
+    if not normalize:
         warnings.warn("WARNING: Ignoring data normalization!\n" +
-                      "To normalize/reduce training data, use flag [-n|--normalize] <pca/mean>")
+                      "To mean normalize training data, remove flag [-n|--normalize]")
         input("Press Enter to continue...")
-    elif normalize not in ['pca', 'mean']:
-        sys.exit("Error: Unknown normalization type. Use flag [-n|--normalize] with <pca/mean>")
 
     if regression and ('gender' in task or 'id' in task):
         sys.exit("Error: Regression is only possible for 'height' and 'weight' tasks.\n" +
                  "Remove flag [-R|--regression] from the command line.")
 
     if out_file.lower() == 'auto':
-        out_file = auto_generate_log_file_name(task, nn_type, num_layers)
+        out_file = auto_generate_log_file_name(task, nn_type, num_layers, out_path)
 
     print("Training log file: ", out_file)
 
@@ -518,15 +531,13 @@ def main(argv):
         training_params_dict['classification'] = 'True'
         training_params_dict['binary_classification'] = 'True' if binary else 'False'
     training_params_dict['num_output_neurons'] = 'None'
-    training_params_dict['model'] = 'Linear Classifier' if num_layers == 1 else \
-                                    str(num_layers) + '-Layer NN'
-    training_params_dict['normalize'] = 'None' if normalize is None else normalize
+    training_params_dict['model'] = str(num_layers) + '-Layer ' + nn_type.upper()
+    training_params_dict['normalize'] = 'Mean Normalized' if normalize else 'None'
     training_params_dict['step_size'] = step_size
     if dropout is not None and dropout < 1.0:
         training_params_dict['dropout'] = dropout
     training_params_dict['reg_lambda'] = reg_lambda
-    if normalize == 'pca':
-        training_params_dict['pca_dims'] = dims
+    training_params_dict['tune_internal_states'] = 'True' if tune else 'False'
     cross_valid_dict['training_hyper_params'] = training_params_dict
 
     with open(out_file, 'w') as fp:
@@ -535,9 +546,9 @@ def main(argv):
     # Train k-fold cross validation models and collect training logs
     for i in range(num_folds):
         print("Training No.:", i + 1)
-        cross_valid_dict[i] = train_fold(data_file, task, regression, binary, activations[actv_fn],
-                                         normalize, test_split, num_layers, step_size, dropout,
-                                         reg_lambda, dims, epochs, log_freq, plot_title,
+        cross_valid_dict[i] = train_fold(data_file, task, nn_type, regression, binary, normalize,
+                                         activations[actv_fn], test_split, num_layers, step_size,
+                                         dropout, reg_lambda, tune, epochs, log_freq, plot_title,
                                          cross_valid_dict)
 
         # Dump extracted data to file in JSON format
