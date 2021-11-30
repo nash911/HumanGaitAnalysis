@@ -20,9 +20,17 @@ from pydl.nn.nn import NN
 from pydl.training.adam import Adam
 from pydl import conf
 
+np.random.seed(11421111)
 
-def auto_generate_log_file_name(task, nn_type, num_layers):
-    _, _, filenames = next(os.walk('output/'))
+
+def auto_generate_log_file_name(task, nn_type, num_layers, out_path):
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+
+    if out_path[-1] != '/':
+        out_path += '/'
+
+    _, _, filenames = next(os.walk(out_path))
     task_files = list()
     for f in filenames:
         if task + '_' + nn_type in f:
@@ -35,7 +43,7 @@ def auto_generate_log_file_name(task, nn_type, num_layers):
     file_ids.sort()
     new_id = file_ids[-1] + 1
     new_file_name = \
-        'output/' + task + '_' + nn_type + '_' + str(num_layers) + '_' + str(new_id) + '.dat'
+        out_path + task + '_' + nn_type + '_' + str(num_layers) + '_' + str(new_id) + '.dat'
 
     return new_file_name
 
@@ -184,6 +192,12 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         for k, v in data_dict.items():
             ids_list.append(v['id'])
 
+        # Get number of test samples
+        if test_smpl_per_ctgry < 1.0:
+            num_subjects = len(ids_list)
+            test_smpl_per_ctgry = int(np.rint(test_smpl_per_ctgry * num_subjects))
+            print("test_smpl_per_ctgry: ", test_smpl_per_ctgry)
+
         # Sort ids randomly and choose n ids as test set
         rnd_order = np.random.permutation(len(ids_list))
         test_ids = np.array(ids_list, dtype=np.int)[rnd_order][:test_smpl_per_ctgry]
@@ -207,7 +221,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         test_ids = list()
         for k, v in category_dict.items():
             rnd_order = np.random.permutation(len(v))
-            test_subjects_dict[k] = np.array(v)[rnd_order][:test_smpl_per_ctgry]
+            test_subjects_dict[k] = np.array(v)[rnd_order][:int(test_smpl_per_ctgry)]
             test_ids.append(test_subjects_dict[k])
         test_ids = np.hstack(test_ids).tolist()
 
@@ -314,7 +328,7 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
                cross_valid_dict):
     if task == 'gender':
         if test_split >= 1.0:
-            sys.exit("Error: For Sender classification, test_split [-s|--test_split] must " +
+            sys.exit("Error: For Gender classification, test_split [-s|--test_split] must " +
                      "be a float value < 1.0")
         train_X, test_X, train_y, test_y, test_ids_dict = \
             gender_data_split(data_file, test_perc=test_split)
@@ -325,11 +339,11 @@ def train_fold(data_file, task, regression, binary, actv_fn, normalize, test_spl
         train_X, test_X, train_y, test_y, test_ids_dict = \
             subjectId_data_split(data_file, test_perc=test_split)
     elif task in ['height', 'weight']:
-        if test_split < 1.0:
+        if not regression and test_split < 1.0:
             sys.exit("Error: For Height/Weight classification, test_split [-s|--test_split] " +
                      "must be an integer value >= 1")
         train_X, test_X, train_y, test_y, test_ids_dict = \
-            height_weight_data_split(data_file, task, test_smpl_per_ctgry=int(test_split),
+            height_weight_data_split(data_file, task, test_smpl_per_ctgry=test_split,
                                      regression=regression)
 
     train_size = train_X.shape[0]
@@ -396,12 +410,11 @@ def usage():
           "                              [-L | --lr] <learning rate> \n"
           "                              [-n | --normalize] <mean/pca> \n"
           "                              [-o | --out_file] <training logs file path> \n"
-          "                              [-p | --plot] \n"
+          "                              [-p | --out_path] <output file path> \n"
           "                              [-r | --regul] <regularization lamda> \n"
           "                              [-R | --regression] \n"
           "                              [-s | --test_split] <test split of the data> \n"
           "                              [-t | --task] <gender/id/height/weight> \n"
-          "                              [-T | --nn_type] <fc/cnn/rnn/lstm> \n"
           )
 
 
@@ -421,7 +434,7 @@ def main(argv):
     reg_lambda = 0.1
     data_file = 'data/robot_data_file.dat'
     out_file = 'output/train_log.dat'
-    plot = False
+    out_path = 'output/'
     plot_title = None
     log_freq = 1
     num_folds = 1
@@ -434,11 +447,11 @@ def main(argv):
                    }
 
     try:
-        opts, args = getopt.getopt(argv, "h bpRa:t:D:s:l:d:L:r:n:e:f:k:o:T:",
-                                   ["not_binary", "plot", "regression", "activation_fn=", "task=",
+        opts, args = getopt.getopt(argv, "h bRa:t:D:s:l:d:L:r:n:e:f:k:o:p:",
+                                   ["not_binary", "regression", "activation_fn=", "task=",
                                     "pca_dims=" "test_split=", "num_layers=", "dropout=", "lr=",
                                     "regul=", "normalize=", "epochs=", "log_freq=", "num_folds=",
-                                    "out_file=", "nn_type="])
+                                    "out_file=", "out_path="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -451,8 +464,6 @@ def main(argv):
             actv_fn = arg.lower()
         elif opt in ("-b", "--not_binary"):
             binary = False
-        elif opt in ("-p", "--plot"):
-            plot = True
         elif opt in ("-t", "--task"):
             task = arg.lower()
         elif opt in ("-D", "--pca_dims"):
@@ -479,15 +490,11 @@ def main(argv):
             num_folds = int(arg)
         elif opt in ("-o", "--out_file"):
             out_file = arg
-        elif opt in ("-T", "--nn_type"):
-            nn_type = arg.upper()
+        elif opt in ("-p", "--out_path"):
+            out_path += arg
 
     if dims > 1.0:
         dims = int(dims)
-
-    if nn_type not in ['FC', 'CNN', 'RNN', 'LSTM']:
-        sys.exit("Error: Unknown neural network type. Use flag [-T|--nn_type] with " +
-                 "<fc/cnn/rnn/lstm>")
 
     if normalize is None:
         warnings.warn("WARNING: Ignoring data normalization!\n" +
@@ -501,7 +508,7 @@ def main(argv):
                  "Remove flag [-R|--regression] from the command line.")
 
     if out_file.lower() == 'auto':
-        out_file = auto_generate_log_file_name(task, nn_type, num_layers)
+        out_file = auto_generate_log_file_name(task, nn_type, num_layers, out_path)
 
     print("Training log file: ", out_file)
 
@@ -517,6 +524,7 @@ def main(argv):
     else:
         training_params_dict['classification'] = 'True'
         training_params_dict['binary_classification'] = 'True' if binary else 'False'
+    training_params_dict['test_split'] = test_split
     training_params_dict['num_output_neurons'] = 'None'
     training_params_dict['model'] = 'Linear Classifier' if num_layers == 1 else \
                                     str(num_layers) + '-Layer NN'

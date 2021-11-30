@@ -186,7 +186,7 @@ def subjectId_data_split(data_file, test_perc=0.3):
     return train_X, test_X, train_y, test_y, data_split_dict
 
 
-def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, regression=False):
+def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=0.3, regression=False):
     with open(data_file) as df:
         data_dict = json.load(df)
 
@@ -195,6 +195,12 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         # Collect all person-ids in the data dictionary
         for k, v in data_dict.items():
             ids_list.append(v['id'])
+
+        # Get number of test samples
+        if test_smpl_per_ctgry < 1.0:
+            num_subjects = len(ids_list)
+            test_smpl_per_ctgry = int(np.rint(test_smpl_per_ctgry * num_subjects))
+            print("test_smpl_per_ctgry: ", test_smpl_per_ctgry)
 
         # Sort ids randomly and choose n ids as test set
         rnd_order = np.random.permutation(len(ids_list))
@@ -219,7 +225,7 @@ def height_weight_data_split(data_file, target='height', test_smpl_per_ctgry=6, 
         test_ids = list()
         for k, v in category_dict.items():
             rnd_order = np.random.permutation(len(v))
-            test_subjects_dict[k] = np.array(v)[rnd_order][:test_smpl_per_ctgry]
+            test_subjects_dict[k] = np.array(v)[rnd_order][:int(test_smpl_per_ctgry)]
             test_ids.append(test_subjects_dict[k])
         test_ids = np.hstack(test_ids).tolist()
 
@@ -342,11 +348,11 @@ def train_fold(data_file, task, nn_type, regression, binary, normalize, actv_fn,
         train_X, test_X, train_y, test_y, test_ids_dict = \
             subjectId_data_split(data_file, test_perc=test_split)
     elif task in ['height', 'weight']:
-        if test_split < 1.0:
+        if not regression and test_split < 1.0:
             sys.exit("Error: For Height/Weight classification, test_split [-s|--test_split] " +
                      "must be an integer value >= 1")
         train_X, test_X, train_y, test_y, test_ids_dict = \
-            height_weight_data_split(data_file, task, test_smpl_per_ctgry=int(test_split),
+            height_weight_data_split(data_file, task, test_smpl_per_ctgry=test_split,
                                      regression=regression)
 
     train_size = train_X.shape[0]
@@ -504,9 +510,9 @@ def main(argv):
         sys.exit("Error: Unknown neural network type. Use flag [-T|--nn_type] with " +
                  "<rnn/lstm/gru>")
 
-    if not normalize:
-        warnings.warn("WARNING: Ignoring data normalization!\n" +
-                      "To mean normalize training data, remove flag [-n|--normalize]")
+    if normalize:
+        warnings.warn("WARNING: Normalizing sequence data!\n" +
+                      "To not normalize training data, remove flag [-n|--normalize]")
         input("Press Enter to continue...")
 
     if regression and ('gender' in task or 'id' in task):
@@ -530,6 +536,7 @@ def main(argv):
     else:
         training_params_dict['classification'] = 'True'
         training_params_dict['binary_classification'] = 'True' if binary else 'False'
+    training_params_dict['test_split'] = test_split
     training_params_dict['num_output_neurons'] = 'None'
     training_params_dict['model'] = str(num_layers) + '-Layer ' + nn_type.upper()
     training_params_dict['normalize'] = 'Mean Normalized' if normalize else 'None'
