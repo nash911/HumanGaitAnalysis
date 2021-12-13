@@ -22,9 +22,12 @@ style.use('seaborn')
 
 prev_plot_time = 0
 
-colors = ['red', 'blue', 'green', 'brown', 'pink', 'purple', 'orange', 'magenta', 'tan', 'black',
-          'cyan', 'gold', 'lavender', 'turquoise', 'violet', 'beige', 'salmon', 'olive',
-          'crimson', 'eggplant', 'coral']
+colors = ['red', 'blue', 'green', 'brown', 'pink', 'purple', 'orange', 'magenta', 'yellow', 'black',
+          'cyan', 'gold', 'lavender', 'turquoise', 'violet', 'beige', 'salmon', 'olive', 'orchid',
+          'crimson', 'deeppink', 'coral', 'indigo', 'slateblue', 'darkblue', 'slategrey', 'navy',
+          'royalblue', 'forestgreen', 'darkorange', 'chocolate', 'sienna', 'darkred', 'rosybrown',
+          'dodgerblue', 'teal', 'seagreen', 'thistle', 'firebrick', 'tomato', 'grey', 'wheat', 'tan',
+          'darkslategray', 'darkgoldenrod']
 
 
 def plot_graphs(ax, plot_dict, conf_intervals=True, legend=True):
@@ -64,20 +67,15 @@ def clac_stats(train_dict, metric_title):
     print("---------------------------------------------------------------------------------------")
 
 
-def usage():
-    print("Usage: analyze_trained_models.py [-i | --inp_file] <file path of training_logs> \n"
-          "                                 "
-          "[-m | --metric] <train_loss/test_loss/train_accu/test_accu> \n"
-          "                                 [-e | --epochs] <max no. of epochs to evaluate> \n"
-          )
+def extract_files(key, path='output/'):
+    if path[-1] != '/':
+        path += '/'
 
-
-def extract_files(key):
-    _, _, filenames = next(os.walk('output/'))
+    _, _, filenames = next(os.walk(path))
     input_files = list()
     for f in filenames:
         if key in f:
-            input_files.append(join('output/', f))
+            input_files.append(join(path, f))
 
     input_files.sort()
     return input_files
@@ -102,11 +100,11 @@ def extract_metric_title(metric):
     return metric, metric_title
 
 
-def get_input_files(input_files):
+def get_input_files(input_files, path='output/'):
     for i_file in input_files:
         if '*' in i_file:
             key = i_file.split('*')[0]
-            input_files += extract_files(key)
+            input_files += extract_files(key, path)
 
     for i_file in list(input_files):
         if '*' in i_file:
@@ -116,14 +114,25 @@ def get_input_files(input_files):
     return input_files
 
 
+def usage():
+    print("Usage: analyze_trained_models.py [-i | --inp_file] <file path of training_logs> \n"
+          "                                 "
+          "[-m | --metric] <train_loss/test_loss/train_accu/test_accu> \n"
+          "                                 [-e | --epochs] <max no. of epochs to evaluate> \n"
+          )
+
+
 def main(argv):
+    path = 'output/'
     input_files = list()
     task = list()
     metric = 'test_accuracy'
     epochs = None
+    num_train_models = None
 
     try:
-        opts, args = getopt.getopt(argv, "h i:m:e:", ["inp_file=", "metric=", "epochs="])
+        opts, args = getopt.getopt(argv, "h p:i:m:e:n:", ["inp_path=", "inp_file=", "metric=",
+                                                          "epochs=", "num_train="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -132,15 +141,22 @@ def main(argv):
         if opt == '-h':
             usage()
             sys.exit()
+        elif opt in ("-p", "--inp_path"):
+            if 'output/' in arg:
+                path = arg
+            else:
+                path += arg
         elif opt in ("-i", "--inp_file"):
             input_files.append(arg)
         elif opt in ("-m", "--metric"):
             metric = arg.lower()
-        elif opt in ("-m", "--metric"):
+        elif opt in ("-e", "--epochs"):
             epochs = int(arg)
+        elif opt in ("-n", "--num_train"):
+            num_train_models = int(arg)
 
     metric, metric_title = extract_metric_title(metric)
-    input_files = get_input_files(input_files)
+    input_files = get_input_files(input_files, path)
 
     for i_file in input_files:
         if 'id' in i_file.lower() and 'ID' not in task:
@@ -178,14 +194,19 @@ def main(argv):
                 try:
                     train_inst_dict['epochs'] = cross_valid_dict['0']['epochs']
                     eval_metric = list()
+
                     for i in range(len(cross_valid_dict) - 1):
-                        eval_metric.append(np.reshape(np.array(cross_valid_dict[str(i)][metric]),
-                                                      (-1, 1)))
+                    # for i in range(2 - 1):
+                        try:
+                            eval_metric.append(
+                                np.reshape(np.array(cross_valid_dict[str(i)][metric]), (-1, 1)))
+                        except KeyError:
+                            continue
 
                     eval_metric = np.hstack(eval_metric)
                     train_inst_dict['plot_arr'] = eval_metric
                     train_inst_dict['color'] = colors[ind]
-                    train_inst_dict['label'] = i_file.split('/')[1].split('.')[0]
+                    train_inst_dict['label'] = i_file.split('/')[-1].split('.')[0]
                     train_dict[ind] = train_inst_dict
                 except KeyError:
                     pass
