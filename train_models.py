@@ -34,7 +34,7 @@ def main(argv):
     num_neurons = [5, 15, 30]
     optimizer = ['adam', 'momentum', 'rmsprop']
     learning_rate = [1e-3]
-    normalize = ['mean', 'pca']
+    normalize = ['mean', 'minmax', 'pca']
     pca_dims = [350]
     dropout = [1.0, 0.9]
     regularization = [0, 0.1]
@@ -47,6 +47,9 @@ def main(argv):
         list(itertools.product(task, nn_type, num_layers, optimizer, learning_rate, normalize,
                                dropout, regularization, test_split)):
         if n_type != 'FC':
+            continue
+
+        if norm not in ['mean', 'pca']:
             continue
 
         if n_layer == 1 and dout < 1.0:
@@ -69,11 +72,14 @@ def main(argv):
         else:
             command_list.append(cmd)
 
-    for tsk, n_type, n_layer, n_neurons, opt, lr, dout, reg, actv, t_split, tune in \
+    for tsk, n_type, n_layer, n_neurons, opt, lr, norm, dout, reg, actv, t_split, tune in \
         list(itertools.product(task, nn_type, num_layers, num_neurons, optimizer, learning_rate,
-                               dropout, regularization, hidden_activation_fn, test_split,
+                               normalize, dropout, regularization, hidden_activation_fn, test_split,
                                tune_internal_states)):
         if n_type not in ['RNN', 'LSTM', 'GRU']:
+            continue
+
+        if norm not in ['mean', 'minmax']:
             continue
 
         if n_layer >= 3:
@@ -91,7 +97,8 @@ def main(argv):
               ' --hidden_activation ' + str(actv) + ' --optimizer ' + opt + ' --lr ' + str(lr) + \
               ' --dropout ' + str(dout) + ' --regul ' + str(reg) + ' --test_split ' + \
               str(t_split) + ' --num_folds ' + str(num_folds) + ' --epochs ' + str(epochs) + \
-              ' --out_file auto' + ' --out_path ' + out_path + ' --presplit_data' + ' --normalize'
+              ' --out_file auto' + ' --out_path ' + out_path + ' --presplit_data' + \
+              ' --normalize ' + norm
 
         if tsk in ['height', 'weight']:
             cmd += ' --regression'

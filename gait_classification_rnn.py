@@ -497,7 +497,7 @@ def usage():
           "                              [-k | --num_folds] <no. of cross validation folds> \n"
           "                              [-l | --num_layers] <no. of nn layers> \n"
           "                              [-L | --lr] <learning rate> \n"
-          "                              [-n | --normalize] \n"
+          "                              [-n | --normalize] <mean/minmax> \n"
           "                              [-N | --num_neurons] <no. of neurons per layer>\n"
           "                              [-o | --out_file] <training logs file path> \n"
           "                              [-O | --optimizer] <adam/momentum/rmsprop> \n"
@@ -520,7 +520,7 @@ def main(argv):
     hidden_actv_fn = 'tanh'
     out_actv_fn = 'softmax'
     binary = True
-    normalize = False
+    normalize = None
     test_split = 0.25
     num_layers = 1
     num_neurons = None
@@ -545,9 +545,9 @@ def main(argv):
                    }
 
     try:
-        opts, args = getopt.getopt(argv, "h bRniSH:a:t:s:l:d:L:r:e:f:k:o:T:p:P:N:O:",
-                                   ["help", "not_binary", "regression", "normalize",
-                                    "tune_int_states", "presplit_data", "hidden_activation=",
+        opts, args = getopt.getopt(argv, "h bRiSn:H:a:t:s:l:d:L:r:e:f:k:o:T:p:P:N:O:",
+                                   ["help", "not_binary", "regression", "tune_int_states",
+                                    "presplit_data", "normalize=", "hidden_activation=",
                                     "out_activation_fn=", "task=", "test_split=", "num_layers=",
                                     "dropout=", "lr=", "regul=", "epochs=", "log_freq=",
                                     "num_folds=", "out_file=", "nn_type=", "out_path=", "plot=",
@@ -581,7 +581,7 @@ def main(argv):
         elif opt in ("-R", "--regression"):
             regression = True
         elif opt in ("-n", "--normalize"):
-            normalize = True
+            normalize = arg.lower()
         elif opt in ("-e", "--epochs"):
             epochs = int(arg)
         elif opt in ("-f", "--log_freq"):
@@ -622,8 +622,10 @@ def main(argv):
 
     if not normalize:
         warnings.warn("WARNING: Unnormalized sequence data!\n" +
-                      "To normalize training data, use flag [-n|--normalize]")
+                      "To normalize training data, use flag [-n|--normalize] with <mean/minmax>")
         input("Press Enter to continue...")
+    elif normalize not in ['mean', 'minmax']:
+        sys.exit("Error: Unknown normalization type. Use flag [-n|--normalize] with <mean/minmax>")
 
     if regression and ('gender' in task or 'id' in task):
         sys.exit("Error: Regression is only possible for 'height' and 'weight' tasks.\n" +
