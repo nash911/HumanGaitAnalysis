@@ -82,22 +82,29 @@ def extract_files(key, path='output/'):
 
 
 def extract_metric_title(metric):
+    metric_list = list()
     if 'train' in metric:
         if 'loss' in metric:
-            metric = 'train_loss'
+            metric_list.append('train_loss')
             metric_title = 'Train Loss'
+            if 'test' in metric:
+                metric_list.append('test_loss')
+                metric_title = 'Train/Test Loss'
         elif 'accu' in metric:
-            metric = 'train_accuracy'
+            metric_list.append('train_accuracy')
             metric_title = 'Train Accuracy'
+            if 'test' in metric:
+                metric_list.append('test_accuracy')
+                metric_title = 'Train/Test Accuracy'
     elif 'test' in metric:
         if 'loss' in metric:
-            metric = 'test_loss'
+            metric_list.append('test_loss')
             metric_title = 'Test Loss'
         elif 'accu' in metric:
-            metric = 'test_accuracy'
+            metric_list.append('test_accuracy')
             metric_title = 'Test Accuracy'
 
-    return metric, metric_title
+    return metric_list, metric_title
 
 
 def get_input_files(input_files, path='output/'):
@@ -186,30 +193,33 @@ def main(argv):
 
         if replot:
             train_dict = OrderedDict()
-            for ind, i_file in enumerate(input_files):
-                train_inst_dict = OrderedDict()
-                with open(i_file) as inp_f:
-                    cross_valid_dict = json.load(inp_f)
+            num_metric = len(metric) - 1
+            for m, met in enumerate(metric):
+                for ind, i_file in enumerate(input_files):
+                    train_inst_dict = OrderedDict()
+                    with open(i_file) as inp_f:
+                        cross_valid_dict = json.load(inp_f)
 
-                try:
-                    train_inst_dict['epochs'] = cross_valid_dict['0']['epochs']
-                    eval_metric = list()
+                    try:
+                        train_inst_dict['epochs'] = cross_valid_dict['0']['epochs']
+                        eval_metric = list()
 
-                    for i in range(len(cross_valid_dict) - 1):
-                    # for i in range(2 - 1):
-                        try:
-                            eval_metric.append(
-                                np.reshape(np.array(cross_valid_dict[str(i)][metric]), (-1, 1)))
-                        except KeyError:
-                            continue
+                        for i in range(len(cross_valid_dict) - 1):
+                        # for i in range(2 - 1):
+                            try:
+                                eval_metric.append(
+                                    np.reshape(np.array(cross_valid_dict[str(i)][met]), (-1, 1)))
+                            except KeyError:
+                                continue
 
-                    eval_metric = np.hstack(eval_metric)
-                    train_inst_dict['plot_arr'] = eval_metric
-                    train_inst_dict['color'] = colors[ind]
-                    train_inst_dict['label'] = i_file.split('/')[-1].split('.')[0]
-                    train_dict[ind] = train_inst_dict
-                except KeyError:
-                    pass
+                        eval_metric = np.hstack(eval_metric)
+                        print("eval_metric.shape: ", eval_metric.shape)
+                        train_inst_dict['plot_arr'] = eval_metric
+                        train_inst_dict['color'] = colors[(m * num_metric) + ind]
+                        train_inst_dict['label'] = i_file.split('/')[-1].split('.')[0] + '-' + met
+                        train_dict[(m * num_metric) + ind] = train_inst_dict
+                    except KeyError:
+                        pass
 
             plot_graphs(axs, train_dict, conf_intervals=True)
             clac_stats(train_dict, metric_title)
