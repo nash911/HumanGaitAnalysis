@@ -43,6 +43,7 @@ def main(argv):
     tune_internal_states = [True, False]
     command_list = list()
 
+    # Train FC Models
     for tsk, n_type, n_layer, opt, lr, norm, dout, reg, t_split in \
         list(itertools.product(task, nn_type, num_layers, optimizer, learning_rate, normalize,
                                dropout, regularization, test_split)):
@@ -72,6 +73,7 @@ def main(argv):
         else:
             command_list.append(cmd)
 
+    # Train Recurrent Models
     for tsk, n_type, n_layer, n_neurons, opt, lr, norm, dout, reg, actv, t_split, tune in \
         list(itertools.product(task, nn_type, num_layers, num_neurons, optimizer, learning_rate,
                                normalize, dropout, regularization, hidden_activation_fn, test_split,

@@ -620,7 +620,7 @@ def main(argv):
         sys.exit("Error: Unknown neural network type. Use flag [-T|--nn_type] with " +
                  "<rnn/lstm/gru>")
 
-    if not normalize:
+    if normalize is None:
         warnings.warn("WARNING: Unnormalized sequence data!\n" +
                       "To normalize training data, use flag [-n|--normalize] with <mean/minmax>")
         input("Press Enter to continue...")
@@ -664,7 +664,7 @@ def main(argv):
     training_params_dict['model'] = str(num_layers) + '-Layer ' + nn_type.upper()
     training_params_dict['num_hidden_neurons'] = num_neurons
     training_params_dict['optimizer'] = optimizer
-    training_params_dict['normalize'] = 'Mean Normalized' if normalize else 'None'
+    training_params_dict['normalize'] = 'Mean' if normalize.lower() == 'mean' else 'MinMax'
     training_params_dict['step_size'] = step_size
     if dropout is not None and dropout < 1.0:
         training_params_dict['dropout'] = dropout
